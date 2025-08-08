@@ -1,0 +1,17 @@
+{
+    "version": "2.0.0",
+    "configurations": [
+        {
+            "name": "Run Build Script",
+            "type": "cppvsdbg", // Can use cppvsdbg here, no debugging involved
+            "request": "launch",
+            "program": "C:/Windows/System32/cmd.exe",  // Use cmd.exe to run batch file
+            "args": [
+                "/c", // Tells cmd to run the command and then exit
+                "${workspaceFolder}/build.bat" // Path to your batch file
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"  // Set current working directory
+        }
+    ]
+}
