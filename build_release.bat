@@ -1,7 +1,7 @@
 @echo off
 REM Get the current folder name as the game name
 for %%i in ("%cd%") do set "GAME_NAME=%%~ni"
-echo Building %GAME_NAME% Game (Release) in C++23...
+echo Building %GAME_NAME% Game (Release) with C++23, EnTT, GLFW, and OpenGL...
 
 REM Define tool paths
 set "CMAKE_PATH=C:\Program Files\CMake\bin\cmake.exe"

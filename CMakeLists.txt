@@ -41,38 +41,36 @@ else()
     message(STATUS "EnTT found at: ${CMAKE_SOURCE_DIR}/libs/entt")
 endif()
 
-# Sokol - Single-header libraries for graphics, audio, etc.
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/libs/sokol")
-    message(STATUS "Sokol not found in libs/sokol. Please add Sokol headers to libs/sokol")
+# GLFW - Window and input handling
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/libs/glfw")
+    message(STATUS "GLFW not found in libs/glfw. Please add GLFW to libs/glfw or install via package manager")
 else()
-    include_directories(${CMAKE_SOURCE_DIR}/libs/sokol)
-    message(STATUS "Sokol found at: ${CMAKE_SOURCE_DIR}/libs/sokol")
+    add_subdirectory(${CMAKE_SOURCE_DIR}/libs/glfw)
+    message(STATUS "GLFW found at: ${CMAKE_SOURCE_DIR}/libs/glfw")
 endif()
 
-# Platform-specific libraries for Sokol
+# OpenGL - Graphics API
+find_package(OpenGL REQUIRED)
+
+# Platform-specific libraries for GLFW + OpenGL
 if(WIN32)
-    set(SOKOL_LIBS 
-        kernel32
-        user32
-        shell32
-        opengl32 
-        gdi32 
+    set(GRAPHICS_LIBS 
+        opengl32
+        ${OPENGL_LIBRARIES}
     )
 elseif(APPLE)
     find_library(COCOA_LIBRARY Cocoa)
-    find_library(QUARTZ_CORE_LIBRARY QuartzCore)
-    find_library(METAL_LIBRARY Metal)
-    find_library(METALKIT_LIBRARY MetalKit)
-    set(SOKOL_LIBS 
+    find_library(IOKIT_LIBRARY IOKit)
+    find_library(COREVIDEO_LIBRARY CoreVideo)
+    set(GRAPHICS_LIBS 
+        ${OPENGL_LIBRARIES}
         ${COCOA_LIBRARY}
-        ${QUARTZ_CORE_LIBRARY}
-        ${METAL_LIBRARY}
-        ${METALKIT_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREVIDEO_LIBRARY}
     )
 elseif(UNIX)
     find_package(X11 REQUIRED)
-    find_package(OpenGL REQUIRED)
-    set(SOKOL_LIBS 
+    set(GRAPHICS_LIBS 
         ${X11_LIBRARIES}
         ${OPENGL_LIBRARIES}
         m
@@ -127,19 +125,18 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     )
 endif()
 
-# Sokol compile definitions
+# GLFW compile definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    $<$<PLATFORM_ID:Windows>:SOKOL_GLCORE>
-    $<$<PLATFORM_ID:Darwin>:SOKOL_METAL>
-    $<$<PLATFORM_ID:Linux>:SOKOL_GLCORE33>
+    # No special definitions needed - GLFW will include OpenGL headers automatically
 )
 
 # Link libraries
-if(EXISTS "${CMAKE_SOURCE_DIR}/libs/sokol")
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${SOKOL_LIBS})
-    message(STATUS "Linking Sokol platform libraries: ${SOKOL_LIBS}")
+if(EXISTS "${CMAKE_SOURCE_DIR}/libs/glfw")
+    target_link_libraries(${PROJECT_NAME} PRIVATE glfw ${GRAPHICS_LIBS})
+    message(STATUS "Linking GLFW and OpenGL libraries: glfw ${GRAPHICS_LIBS}")
 else()
-    message(STATUS "Sokol not found - skipping platform library linking")
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${GRAPHICS_LIBS})
+    message(STATUS "GLFW not found - linking only OpenGL libraries: ${GRAPHICS_LIBS}")
 endif()
 
 # Additional libraries can be added here as needed

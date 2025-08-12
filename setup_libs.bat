@@ -1,5 +1,5 @@
 @echo off
-echo Setting up EnTT and Sokol libraries...
+echo Setting up EnTT and GLFW libraries...
 
 REM Create libs directory if it doesn't exist
 if not exist "libs" (
@@ -19,35 +19,30 @@ if %ERRORLEVEL% equ 0 (
     echo Extract it to: libs\entt\
 )
 
-REM Download Sokol  
-echo Setting up Sokol...
-echo Cloning Sokol repository...
-if exist "libs\sokol" rmdir /s /q "libs\sokol"
-git clone --depth 1 https://github.com/floooh/sokol.git libs/sokol
+REM Download GLFW  
+echo Setting up GLFW...
+echo Cloning GLFW repository...
+if exist "libs\glfw" rmdir /s /q "libs\glfw"
+git clone --depth 1 https://github.com/glfw/glfw.git libs/glfw
 if %ERRORLEVEL% equ 0 (
-    echo Sokol downloaded successfully
+    echo GLFW downloaded successfully
 ) else (
-    echo Failed to clone Sokol. You can manually download it from: https://github.com/floooh/sokol
-    echo Extract it to: libs\sokol\
+    echo Failed to clone GLFW. You can manually download it from: https://github.com/glfw/glfw
+    echo Extract it to: libs\glfw\
 )
 
 echo.
 echo Library setup complete!
-echo You can now build the project with C++23, EnTT, and Sokol support.
+echo You can now build the project with C++23, EnTT, GLFW, and OpenGL support.
 
 REM Check if libraries are properly set up
-if exist "libs\entt\src\entt\entt.hpp" if exist "libs\sokol" (
+if exist "libs\entt\src\entt\entt.hpp" if exist "libs\glfw\CMakeLists.txt" (
     echo All libraries are properly configured
 ) else (
     echo Some libraries may not be properly configured. Check the libs\ directory.
 )
 
 pause
-REM Check if libraries are properly set up
-if exist "libs\entt\src\entt\entt.hpp" if exist "libs\sokol" (
-    echo All libraries are properly configured
-) else (
-    echo Some libraries may not be properly configured. Check the libs\ directory.
 )
 
 pause
