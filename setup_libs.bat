@@ -10,7 +10,8 @@ if not exist "libs" (
 REM Download EnTT
 echo Setting up EnTT...
 echo Cloning EnTT repository...
-git clone --depth 1 --force https://github.com/skypjack/entt.git libs/entt
+if exist "libs\entt" rmdir /s /q "libs\entt"
+git clone --depth 1 https://github.com/skypjack/entt.git libs/entt
 if %ERRORLEVEL% equ 0 (
     echo EnTT downloaded successfully
 ) else (
@@ -21,7 +22,8 @@ if %ERRORLEVEL% equ 0 (
 REM Download Sokol  
 echo Setting up Sokol...
 echo Cloning Sokol repository...
-git clone --depth 1 --force https://github.com/floooh/sokol.git libs/sokol
+if exist "libs\sokol" rmdir /s /q "libs\sokol"
+git clone --depth 1 https://github.com/floooh/sokol.git libs/sokol
 if %ERRORLEVEL% equ 0 (
     echo Sokol downloaded successfully
 ) else (

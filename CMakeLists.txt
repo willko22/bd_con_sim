@@ -23,14 +23,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Configure different build types
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -s -march=native -mtune=native -flto")
-
-# For MSVC, add similar optimizations
-if(MSVC)
-    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /Ob2 /Oi /Ot /GL /DNDEBUG")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG")
-endif()
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -Wno-unknown-pragmas -Wno-cast-function-type")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -s")
 
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)
@@ -58,12 +52,11 @@ endif()
 # Platform-specific libraries for Sokol
 if(WIN32)
     set(SOKOL_LIBS 
+        kernel32
+        user32
+        shell32
         opengl32 
         gdi32 
-        ole32
-        d3d11
-        dxgi
-        dxguid
     )
 elseif(APPLE)
     find_library(COCOA_LIBRARY Cocoa)
@@ -109,6 +102,7 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "${CMAKE_PROJECT_NAME}"
     DEBUG_POSTFIX "_debug"
+
 )
 
 # Compiler-specific options
@@ -116,11 +110,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${PROJECT_NAME} PRIVATE
         -Wall -Wextra -Wpedantic
         $<$<CONFIG:Debug>:-g -O0>
-        $<$<CONFIG:Release>:-O3 -s -march=native -mtune=native -flto>
+        $<$<CONFIG:Release>:-O3 -s>
     )
     # Add size optimization flags for release
     target_link_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Release>:-s -Wl,--gc-sections -flto>
+        $<$<CONFIG:Release>:-s -Wl,--gc-sections>
     )
     
     # Static linking for self-contained executable
@@ -129,16 +123,13 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     target_compile_options(${PROJECT_NAME} PRIVATE
         /W4
         $<$<CONFIG:Debug>:/Od /Zi>
-        $<$<CONFIG:Release>:/O2 /Ob2 /Oi /Ot /GL>
-    )
-    target_link_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Release>:/LTCG>
+        $<$<CONFIG:Release>:/O2>
     )
 endif()
 
 # Sokol compile definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    $<$<PLATFORM_ID:Windows>:SOKOL_D3D11>
+    $<$<PLATFORM_ID:Windows>:SOKOL_GLCORE>
     $<$<PLATFORM_ID:Darwin>:SOKOL_METAL>
     $<$<PLATFORM_ID:Linux>:SOKOL_GLCORE33>
 )
