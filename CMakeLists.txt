@@ -49,6 +49,34 @@ else()
     message(STATUS "GLFW found at: ${CMAKE_SOURCE_DIR}/libs/glfw")
 endif()
 
+# ImGui - Immediate mode GUI library
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/libs/imgui")
+    message(STATUS "ImGui not found in libs/imgui. Please add ImGui to libs/imgui or install via package manager")
+else()
+    include_directories(${CMAKE_SOURCE_DIR}/libs/imgui)
+    include_directories(${CMAKE_SOURCE_DIR}/libs/imgui/backends)
+    
+    # ImGui source files
+    set(IMGUI_SOURCES
+        ${CMAKE_SOURCE_DIR}/libs/imgui/imgui.cpp
+        ${CMAKE_SOURCE_DIR}/libs/imgui/imgui_demo.cpp
+        ${CMAKE_SOURCE_DIR}/libs/imgui/imgui_draw.cpp
+        ${CMAKE_SOURCE_DIR}/libs/imgui/imgui_tables.cpp
+        ${CMAKE_SOURCE_DIR}/libs/imgui/imgui_widgets.cpp
+        ${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_glfw.cpp
+        ${CMAKE_SOURCE_DIR}/libs/imgui/backends/imgui_impl_opengl3.cpp
+    )
+    message(STATUS "ImGui found at: ${CMAKE_SOURCE_DIR}/libs/imgui")
+endif()
+
+# stb - Single-file public domain libraries (includes stb_truetype)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/libs/stb")
+    message(STATUS "stb not found in libs/stb. Please add stb to libs/stb or install via package manager")
+else()
+    include_directories(${CMAKE_SOURCE_DIR}/libs/stb)
+    message(STATUS "stb found at: ${CMAKE_SOURCE_DIR}/libs/stb")
+endif()
+
 # OpenGL - Graphics API
 find_package(OpenGL REQUIRED)
 
@@ -84,6 +112,11 @@ file(GLOB_RECURSE SOURCES
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_SOURCE_DIR}/src/**/*.cpp"
 )
+
+# Add ImGui sources if available
+if(EXISTS "${CMAKE_SOURCE_DIR}/libs/imgui")
+    list(APPEND SOURCES ${IMGUI_SOURCES})
+endif()
 
 # Find all header files (for IDE support)
 file(GLOB_RECURSE HEADERS
@@ -129,6 +162,9 @@ endif()
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     # No special definitions needed - GLFW will include OpenGL headers automatically
 )
+
+# ImGui compile definitions
+# ImGui will use its built-in OpenGL loader by default unless we specify otherwise
 
 # Link libraries
 if(EXISTS "${CMAKE_SOURCE_DIR}/libs/glfw")
