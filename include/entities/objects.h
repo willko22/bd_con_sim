@@ -325,6 +325,7 @@ struct Polygon {
                 // Add to original as current position
                 points_original.add(point);
                 // Add to rotated as current position rotated by current rotations
+                _calculateRotationVariables(pitch, yaw, roll);
                 Vec2 rotated_point = _applyRotations(point);
                 points_rotated.add(rotated_point);
                 break;
@@ -333,7 +334,8 @@ struct Polygon {
                 // Add to rotated as current position
                 points_rotated.add(point);
                 // Add to original as current position rotated in reverse
-                Vec2 original_point = _applyReverseRotations(point);
+                _calculateRotationVariables(pitch, yaw, roll, true);
+                Vec2 original_point = _applyRotations(point);
                 points_original.add(original_point);
                 break;
             }
@@ -397,20 +399,16 @@ struct Polygon {
         _movePoly(x, y);
     }
     
-    // Main rotation functions - clean and consistent
-    // ===============================================
-    // 
-    // These are the primary rotation functions with a clean, consistent interface:
+    // Main rotation functions - optimized and consolidated
+    // ====================================================
     // 
     // setRotation(pitch, yaw, roll) - Sets ABSOLUTE rotation angles for all axes
-    //   - All parameters default to 0.0f, so you can specify only the axes you want
-    //   - Example: setRotation(0.5f) sets pitch to 0.5 radians, yaw and roll to 0
-    //   - Example: setRotation(0.0f, 1.0f) sets yaw to 1.0 radians, pitch and roll to 0
-    // 
     // rotate(pitch, yaw, roll) - ADDS rotation amounts to current rotation
-    //   - All parameters default to 0.0f, so you can specify only the axes you want
-    //   - Example: rotate(0.1f) adds 0.1 radians to current pitch
-    //   - Example: rotate(0.0f, 0.0f, 0.2f) adds 0.2 radians to current roll
+    // 
+    // All parameters default to 0.0f, so you can specify only the axes you want.
+    // Examples: 
+    //   setRotation(0.5f) sets pitch to 0.5 radians, yaw and roll to 0
+    //   rotate(0.0f, 0.0f, 0.2f) adds 0.2 radians to current roll
     
     // Set absolute rotation values for all axes (sets specific angles)
     void setRotation(float pitch_rad = 0.0f, float yaw_rad = 0.0f, float roll_rad = 0.0f) {
@@ -430,35 +428,38 @@ struct Polygon {
         _calculateBBox();
     }
     
+    // Individual axis convenience methods - simplified and consistent
+    void setPitch(float angle_radians) { setRotation(angle_radians, yaw, roll); }
+    void setYaw(float angle_radians) { setRotation(pitch, angle_radians, roll); }
+    void setRoll(float angle_radians) { setRotation(pitch, yaw, angle_radians); }
     
-    // Individual axis convenience methods
-    // ===================================
-    
-    void setPitch(float angle_radians) {
-        setRotation(angle_radians, yaw, roll);
-    }
-    
-    void setYaw(float angle_radians) {
-        setRotation(pitch, angle_radians, roll);
-    }
-    
-    void setRoll(float angle_radians) {
-        setRotation(pitch, yaw, angle_radians);
-    }
-    
-    void rotatePitch(float angle_radians) {
-        rotate(angle_radians, 0.0f, 0.0f);
-    }
-    
-    void rotateYaw(float angle_radians) {
-        rotate(0.0f, angle_radians, 0.0f);
-    }
-    
-    void rotateRoll(float angle_radians) {
-        rotate(0.0f, 0.0f, angle_radians);
-    }
+    void rotatePitch(float angle_radians) { rotate(angle_radians, 0.0f, 0.0f); }
+    void rotateYaw(float angle_radians) { rotate(0.0f, angle_radians, 0.0f); }
+    void rotateRoll(float angle_radians) { rotate(0.0f, 0.0f, angle_radians); }
 
 protected:
+    // Cached trigonometric values - computed once, used many times
+    float _pitch_sin;
+    float _pitch_cos;
+    float _yaw_sin;
+    float _yaw_cos;
+    float _roll_sin;
+    float _roll_cos;
+    
+    // Cached rotation matrix elements (arranged for potential SIMD optimization)
+    float _m00, _m01, _m02;
+    float _m10, _m11, _m12;
+    float _m20, _m21, _m22;
+    
+    // Cached center coordinates
+    float _center_x, _center_y;
+    
+    // Temporary calculation variables (reused to avoid allocations)
+    float _x, _y;
+    float _rotated_x, _rotated_y;
+
+
+
     // Move all points so the bounding box starts at target position
     void _movePoly(i16 target_x, i16 target_y) {
         if (points_original.empty()) {
@@ -514,133 +515,96 @@ protected:
         center.y = bbox.y + static_cast<i16>(bbox.height / 2);
     }
  
-    // Apply current rotations to a single point
-    Vec2 _applyRotations(const Vec2& point) {
-        Vec2 result = point;
+    // Function 1: Calculate all rotation variables once
+    // Sets up trigonometric values and rotation matrix elements
+    void _calculateRotationVariables(float pitch_val, float yaw_val, float roll_val, bool reverse = false) {
+        // Apply reverse multiplier if needed
+        const float multiplier = reverse ? -1.0f : 1.0f;
+        const float effective_pitch = pitch_val * multiplier;
+        const float effective_yaw = yaw_val * multiplier;
+        const float effective_roll = roll_val * multiplier;
         
-        // For 2D representation, we simulate 3D rotations by applying transformations
-        // Rotation order: Pitch (X) -> Yaw (Y) -> Roll (Z) - Standard Tait-Bryan angles
+        // Pre-calculate all trigonometric values once
+        _pitch_cos = std::cos(effective_pitch);
+        _pitch_sin = std::sin(effective_pitch);
+        _yaw_cos = std::cos(effective_yaw);
+        _yaw_sin = std::sin(effective_yaw);
+        _roll_cos = std::cos(effective_roll);
+        _roll_sin = std::sin(effective_roll);
         
-        float x = static_cast<float>(result.x - center.x);
-        float y = static_cast<float>(result.y - center.y);
-        float z = 0.0f; // Assume z = 0 for 2D points
-        
-        // Apply Pitch rotation (rotation around x-axis - nodding up/down)
-        // Positive pitch rotates the front up (nose up in aviation)
-        if (pitch != 0.0f) {
-            float cos_pitch = std::cos(pitch);
-            float sin_pitch = std::sin(pitch);
-            float new_y = y * cos_pitch - z * sin_pitch;
-            float new_z = y * sin_pitch + z * cos_pitch;
-            y = new_y;
-            z = new_z;
+        // Pre-calculate rotation matrix elements based on rotation order
+        if (reverse) {
+            // Reverse order: Roll -> Yaw -> Pitch (transpose of forward matrix)
+            _m00 = _yaw_cos * _roll_cos;
+            _m01 = _pitch_sin * _yaw_sin * _roll_cos + _pitch_cos * _roll_sin;
+            _m02 = -_pitch_cos * _yaw_sin * _roll_cos + _pitch_sin * _roll_sin;
+            _m10 = -_yaw_cos * _roll_sin;
+            _m11 = -_pitch_sin * _yaw_sin * _roll_sin + _pitch_cos * _roll_cos;
+            _m12 = _pitch_cos * _yaw_sin * _roll_sin + _pitch_sin * _roll_cos;
+            _m20 = _yaw_sin;
+            _m21 = -_pitch_sin * _yaw_cos;
+            _m22 = _pitch_cos * _yaw_cos;
+        } else {
+            // Forward order: Pitch -> Yaw -> Roll
+            _m00 = _yaw_cos * _roll_cos;
+            _m01 = -_yaw_cos * _roll_sin;
+            _m02 = _yaw_sin;
+            _m10 = _pitch_sin * _yaw_sin * _roll_cos + _pitch_cos * _roll_sin;
+            _m11 = -_pitch_sin * _yaw_sin * _roll_sin + _pitch_cos * _roll_cos;
+            _m12 = -_pitch_sin * _yaw_cos;
+            _m20 = -_pitch_cos * _yaw_sin * _roll_cos + _pitch_sin * _roll_sin;
+            _m21 = _pitch_cos * _yaw_sin * _roll_sin + _pitch_sin * _roll_cos;
+            _m22 = _pitch_cos * _yaw_cos;
         }
         
-        // Apply Yaw rotation (rotation around y-axis - turning left/right)
-        // Positive yaw rotates left (turning left in aviation)
-        if (yaw != 0.0f) {
-            float cos_yaw = std::cos(yaw);
-            float sin_yaw = std::sin(yaw);
-            float new_x = x * cos_yaw + z * sin_yaw;
-            float new_z = -x * sin_yaw + z * cos_yaw;
-            x = new_x;
-            z = new_z;
-        }
-        
-        // Apply Roll rotation (rotation around z-axis - tilting left/right)
-        // Positive roll tilts the right side down (banking right in aviation)
-        if (roll != 0.0f) {
-            float cos_roll = std::cos(roll);
-            float sin_roll = std::sin(roll);
-            float new_x = x * cos_roll - y * sin_roll;
-            float new_y = x * sin_roll + y * cos_roll;
-            x = new_x;
-            y = new_y;
-        }
-        
-        result.x = static_cast<i16>(x + center.x);
-        result.y = static_cast<i16>(y + center.y);
-        
-        return result;
+        // Cache center coordinates
+        _center_x = static_cast<float>(center.x);
+        _center_y = static_cast<float>(center.y);
     }
     
-    // Apply reverse rotations to a single point
-    Vec2 _applyReverseRotations(const Vec2& point) {
-        Vec2 result = point;
-        
-        float x = static_cast<float>(result.x - center.x);
-        float y = static_cast<float>(result.y - center.y);
-        float z = 0.0f;
-        
-        // Apply rotations in reverse order with negative angles
-        // Reverse order: Roll -> Yaw -> Pitch
-        
-        // Reverse Roll rotation
-        if (roll != 0.0f) {
-            float cos_roll = std::cos(-roll);
-            float sin_roll = std::sin(-roll);
-            float new_x = x * cos_roll - y * sin_roll;
-            float new_y = x * sin_roll + y * cos_roll;
-            x = new_x;
-            y = new_y;
-        }
-        
-        // Reverse Yaw rotation
-        if (yaw != 0.0f) {
-            float cos_yaw = std::cos(-yaw);
-            float sin_yaw = std::sin(-yaw);
-            float new_x = x * cos_yaw + z * sin_yaw;
-            float new_z = -x * sin_yaw + z * cos_yaw;
-            x = new_x;
-            z = new_z;
-        }
-        
-        // Reverse Pitch rotation
-        if (pitch != 0.0f) {
-            float cos_pitch = std::cos(-pitch);
-            float sin_pitch = std::sin(-pitch);
-            float new_y = y * cos_pitch - z * sin_pitch;
-            float new_z = y * sin_pitch + z * cos_pitch;
-            y = new_y;
-            z = new_z;
-        }
-        
-        result.x = static_cast<i16>(x + center.x);
-        result.y = static_cast<i16>(y + center.y);
-        
-        return result;
-    }
-    
-    // Update all rotated points based on current rotations
-    void _updateRotatedPoints() {
+    // Function 2: Apply pre-calculated rotations to all points
+    // Uses the variables set by _calculateRotationVariables
+    void _applyRotationsToAllPoints() {
         points_rotated.clear();
         points_rotated.reserve(points_original.size());
         
+        // Apply pre-calculated matrix to all points in optimized loop (inlined for max performance)
         for (const auto& original_point : points_original) {
-            Vec2 rotated_point = _applyRotations(original_point);
-            points_rotated.add(rotated_point);
+            // Inline the transformation for maximum performance
+            points_rotated.add(_applyRotations(original_point));
         }
     }
     
-    // Legacy method - kept for backward compatibility with Rectangle class
-    void _rotatePoints(float angle_radians, const Vec2& pivot) {
-        float cos_a = std::cos(angle_radians);
-        float sin_a = std::sin(angle_radians);
-        
-        for (auto& p : points_rotated) {
-            // Translate to pivot origin
-            float x = static_cast<float>(p.x - pivot.x);
-            float y = static_cast<float>(p.y - pivot.y);
-            
-            // Rotate
-            float rotated_x = x * cos_a - y * sin_a;
-            float rotated_y = x * sin_a + y * cos_a;
-            
-            // Translate back and update point
-            p.x = static_cast<i16>(rotated_x + pivot.x);
-            p.y = static_cast<i16>(rotated_y + pivot.y);
+    // Optimized rotation application using pre-calculated matrices
+    // Now uses the two-function approach with early exit for no-rotation
+    void _updateRotatedPoints() {
+        // Early exit optimization: if no rotation, just copy original points
+        if (pitch == 0.0f && yaw == 0.0f && roll == 0.0f) {
+            points_rotated = points_original;
+            return;
         }
+        
+        _calculateRotationVariables(pitch, yaw, roll, false);
+        _applyRotationsToAllPoints();
     }
+    
+    
+    // Apply rotation transformation to a single point (used in addPoint modes)
+    inline Vec2 _applyRotations(const Vec2& point) {
+        // Apply transformation to single point (optimized for 2D)
+        _x = static_cast<float>(point.x) - _center_x;
+        _y = static_cast<float>(point.y) - _center_y;
+        
+        // Skip z calculations since z=0 for 2D points
+        _rotated_x = _m00 * _x + _m01 * _y; // Removed _m02 * _z 
+        _rotated_y = _m10 * _x + _m11 * _y; // Removed _m12 * _z
+        
+        return Vec2(
+            static_cast<i16>(_rotated_x + _center_x),
+            static_cast<i16>(_rotated_y + _center_y)
+        );
+    }
+    
 };
 
 // Rectangle class - inherits from Polygon with specific constraints
