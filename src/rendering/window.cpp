@@ -73,6 +73,11 @@ std::pair<bool, GLFWwindow*> window_init(){
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
     update_viewport_cache(width, height);
+    screen_width = static_cast<float>(width);
+    screen_height = static_cast<float>(height);
+    
+    // Initialize world coordinate transform for resolution independence
+    update_world_transform(static_cast<float>(width), static_cast<float>(height));
 
     // Initialize the rasterizer after OpenGL context is created
     if (!rasterize_init()) {
@@ -86,8 +91,8 @@ std::pair<bool, GLFWwindow*> window_init(){
 }
 
 void render_frame(float& fps) {
-    // Clear the screen with a simple color
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+    // Clear the screen with black background when world is centered
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     
     // INSTANCED RENDERING OPTIMIZATION: Draw all rectangles with maximum efficiency

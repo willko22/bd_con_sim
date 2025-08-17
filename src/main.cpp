@@ -119,6 +119,9 @@ int main() {
     // }
 
 
+    // Initialize world background rectangle
+    initialize_world_background();
+
     // Main loop
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -131,6 +134,13 @@ int main() {
         // Update mouse hold duration and handle continuous hold behavior
         update_mouse_hold_duration(frame_delta);
         handle_mouse_hold_continuous();
+        
+        // Remove rectangles that are completely outside world bounds (performance optimization)
+        static double last_bounds_check = 0.0;
+        if (current_time - last_bounds_check > 0.5) { // Check bounds every 0.5 seconds
+            remove_out_of_bounds_rectangles();
+            last_bounds_check = current_time;
+        }
         
         frame_count++;
         double fps_delta = current_time - last_time; // Time since last FPS update
@@ -150,6 +160,7 @@ int main() {
         // for (auto& rect : rectangles) {
         //     rect->rotate(pitch_delta, yaw_delta, roll_delta); // Rotate around all axes
         // }
+
         
         // Render the frame
         render_frame(fps);
