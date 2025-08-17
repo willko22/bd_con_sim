@@ -405,7 +405,7 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     
     size_t data_index = 0;
     for (const auto* rect : rectangles) {
-        if (!rect) continue;
+        if (!rect || !rect->should_render) continue;
         // Send world coordinates to GPU (GPU will convert to screen coordinates)
         float x = rect->center.x;
         float y = rect->center.y;

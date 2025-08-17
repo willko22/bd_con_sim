@@ -245,38 +245,27 @@ void remove_out_of_bounds_rectangles() {
     float current_time = static_cast<float>(glfwGetTime());
     
     // Iterate through rectangles and remove those fully outside world bounds
-    auto rect_it = rectangles.begin();
-    while (rect_it != rectangles.end()) {
-        objects::Rectangle* rect = rect_it->get();
+    for (auto& rect : rectangles) {
+        if (!rect->should_render) continue; // Skip if already marked for removal
         
         // Calculate current position using GPU movement formula: position = initial_position + (velocity * time)
         float time_since_spawn = current_time - rect->spawn_time;
         float current_center_x = rect->center.x + (rect->velocity.x * rect->speed * time_since_spawn);
         float current_center_y = rect->center.y + (rect->velocity.y * rect->speed * time_since_spawn);
         
-        // Calculate rectangle bounds (considering width and height)
-        float rect_left = current_center_x - rect->width / 2.0f;
-        float rect_right = current_center_x + rect->width / 2.0f;
-        float rect_bottom = current_center_y - rect->height / 2.0f;
-        float rect_top = current_center_y + rect->height / 2.0f;
+        // Treat rectangle as circle with radius = max(width, height) / 2
+        float radius = rect->bbox.radius;
         
-        // Check if rectangle is completely outside world bounds
-        bool outside_world = (rect_right < 0.0f) ||           // Completely to the left
-                            (rect_left > world_width) ||       // Completely to the right
-                            (rect_top < 0.0f) ||               // Completely below
-                            (rect_bottom > world_height);      // Completely above
+        // Check if circle is completely outside world bounds
+        bool outside_world = (current_center_x <= -radius) ||           // Completely to the left
+                            (current_center_x - radius >= world_width) ||      // Completely to the right
+                            (current_center_y <= -radius) ||             // Completely below
+                            (current_center_y - radius >= world_height);       // Completely above
         
         if (outside_world) {
             // Remove from render_order first
-            for (auto& layer : render_order) {
-                layer.erase(std::remove(layer.begin(), layer.end(), rect), layer.end());
-            }
-            
-            // Remove from rectangles vector (this will delete the rectangle)
-            rect_it = rectangles.erase(rect_it);
+            rect->should_render = false; // Set should_render to false
             rectangle_count--;
-        } else {
-            ++rect_it;
         }
     }
 }

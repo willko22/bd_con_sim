@@ -580,8 +580,11 @@ struct Polygon {
     float yaw = 0.0f;       // 4 bytes (rotation around y-axis - turning left/right)
     float roll = 0.0f;      // 4 bytes (rotation around z-axis - tilting left/right)
     Vec2 center;            // 4 bytes (center point for rotation)
+    
     bool move = false; // 1 byte (indicates if polygon is moving, used for physics)
     bool should_rotate = true; // 1 byte (indicates if polygon can rotate, used to disable rotation)
+    bool should_render = true; // 1 byte (indicates if polygon should be rendered, used for visibility)
+    
     Vec2 velocity; // 8 bytes (velocity vector for physics, if needed)
     float speed = 0.0f; // 4 bytes (speed of the polygon, if needed)
 
