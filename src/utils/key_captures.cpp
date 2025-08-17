@@ -45,11 +45,11 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
             // Immediate click behavior - use already tracked mouse position
             auto new_rectangles = spawn_rectangles(mouse_current_x, mouse_current_y, true);
             
-            // Move new rectangles to the global vector and add pointers to render order
+            // Move new rectangles to the global vector and add pointers to render order (layer 1)
             for (auto& rect : new_rectangles) {
                 objects::Rectangle* rect_ptr = rect.get();
                 rectangles.push_back(std::move(rect));
-                render_order[0].push_back(rect_ptr); // Add to render order for key 0
+                render_order[1].push_back(rect_ptr); // Add to layer 1 (rectangle layer)
                 // Note: rectangle_count is already incremented in spawn_rectangles
             }
             break;
@@ -118,4 +118,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     (void)window; // Suppress unused parameter warning
     glViewport(0, 0, width, height);
     update_viewport_cache(width, height);
+    
+    // Update world coordinate transform for resolution independence
+    update_world_transform(static_cast<float>(width), static_cast<float>(height));
 }

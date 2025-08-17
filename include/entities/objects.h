@@ -138,14 +138,27 @@ struct Vec2 {
         return std::sqrt(magnitudeSquared());
     }
     
-    // Normalize vector to unit length
-    Vec2 normalize() const noexcept {
+    // // Normalize vector to unit length
+    // Vec2 normalize() const noexcept {
+    //     const float mag = magnitude();
+    //     if (mag > 0.0f) {
+    //         const float inv_mag = 1.0f / mag;
+    //         return Vec2(x * inv_mag, y * inv_mag);
+    //     }
+    //     return Vec2(0.0f, 0.0f);
+    // }
+    
+    // Normalize vector in place (modifies this vector)
+    void normalize() noexcept {
         const float mag = magnitude();
         if (mag > 0.0f) {
             const float inv_mag = 1.0f / mag;
-            return Vec2(x * inv_mag, y * inv_mag);
+            x *= inv_mag;
+            y *= inv_mag;
+        } else {
+            x = 0.0f;
+            y = 0.0f;
         }
-        return Vec2(0.0f, 0.0f);
     }
     
     // Linear interpolation between two vectors
@@ -568,12 +581,19 @@ struct Polygon {
     float roll = 0.0f;      // 4 bytes (rotation around z-axis - tilting left/right)
     Vec2 center;            // 4 bytes (center point for rotation)
     bool move = false; // 1 byte (indicates if polygon is moving, used for physics)
+    bool should_rotate = true; // 1 byte (indicates if polygon can rotate, used to disable rotation)
     Vec2 velocity; // 8 bytes (velocity vector for physics, if needed)
+    float speed = 0.0f; // 4 bytes (speed of the polygon, if needed)
 
     // Initial angles for GPU-side rotation calculation (NEW)
     float initial_pitch = 0.0f;  // 4 bytes - base rotation angles
     float initial_yaw = 0.0f;    // 4 bytes
     float initial_roll = 0.0f;   // 4 bytes
+
+    // Spawn time for GPU-side time-based calculations (NEW)
+    float spawn_time = 0.0f;     // 4 bytes - time when rectangle was spawned (in seconds)
+
+    Vec2 move_offset; // 8 bytes (offset for moving polygons, if needed)
 
     // Cached trigonometric values - computed once, used many times
     mutable float pitch_sin;
@@ -608,28 +628,54 @@ struct Polygon {
     void setVelocity(float vx, float vy) {
         velocity.x = vx;
         velocity.y = vy;
+
+        velocity.normalize(); // Normalize velocity to unit vector
+
+        move_offset = velocity * speed; // Set move offset to velocity for movement
     }
 
     void setVelocity(const Vec2& v) {
         velocity = v;
+
+        velocity.normalize(); // Normalize velocity to unit vector
+
+        move_offset = velocity * speed; // Set move offset to velocity for movement
     }
 
     void adjustVelocity(float vx, float vy) {
         velocity.x += vx;
         velocity.y += vy;
+
+        velocity.normalize(); // Normalize velocity to unit vector
+
+        move_offset = velocity * speed; // Adjust move offset based on new velocity
     }
 
     void adjustVelocity(const Vec2& v) {
         velocity += v;
+        
+        velocity.normalize(); // Normalize velocity to unit vector
+
+        move_offset = velocity * speed; // Adjust move offset based on new velocity
+    }
+
+    void setSpeed(float new_speed) {
+        speed = new_speed;
+        move_offset = velocity * speed; // Update move offset based on new speed
+    }
+
+    void adjustSpeed(float delta_speed) {
+        speed += delta_speed;
+        move_offset = velocity * speed; // Update move offset based on new speed
     }
 
     void movePolygon(float dt) {
         if (move) {
             // Update position based on velocity and time delta
-            center.x += velocity.x * dt;
-            center.y += velocity.y * dt;
+            center.x += move_offset.x * dt;
+            center.y += move_offset.y * dt;
             // Update bounding box and points based on new center
-            _apply_velocity_to_points(dt);
+            // _apply_move_offset_to_points(dt);
         }
     }
 
@@ -741,8 +787,11 @@ struct Polygon {
     //   setRotation(0.5f) sets pitch to 0.5 radians, yaw and roll to 0
     //   rotate(0.0f, 0.0f, 0.2f) adds 0.2 radians to current roll
     
+
     // Set absolute rotation values for all axes (sets specific angles)
     void setRotation(float pitch_rad = 0.0f, float yaw_rad = 0.0f, float roll_rad = 0.0f) {
+        if (!should_rotate) return; // Skip rotation if disabled
+        
         pitch = pitch_rad;
         yaw = yaw_rad;
         roll = roll_rad;
@@ -753,6 +802,8 @@ struct Polygon {
     
     // Add to current rotation values for all axes (rotates by specified amounts)
     void rotate(float pitch_delta = 0.0f, float yaw_delta = 0.0f, float roll_delta = 0.0f) {
+        if (!should_rotate) return; // Skip rotation if disabled
+        
         pitch += pitch_delta;
         yaw += yaw_delta;
         roll += roll_delta;
@@ -768,13 +819,13 @@ struct Polygon {
     }
     
     // Individual axis convenience methods - simplified and consistent
-    void setPitch(float angle_radians) { setRotation(angle_radians, yaw, roll); }
-    void setYaw(float angle_radians) { setRotation(pitch, angle_radians, roll); }
-    void setRoll(float angle_radians) { setRotation(pitch, yaw, angle_radians); }
+    void setPitch(float angle_radians) { if (should_rotate) setRotation(angle_radians, yaw, roll); }
+    void setYaw(float angle_radians) { if (should_rotate) setRotation(pitch, angle_radians, roll); }
+    void setRoll(float angle_radians) { if (should_rotate) setRotation(pitch, yaw, angle_radians); }
     
-    void rotatePitch(float angle_radians) { rotate(angle_radians, 0.0f, 0.0f); }
-    void rotateYaw(float angle_radians) { rotate(0.0f, angle_radians, 0.0f); }
-    void rotateRoll(float angle_radians) { rotate(0.0f, 0.0f, angle_radians); }
+    void rotatePitch(float angle_radians) { if (should_rotate) rotate(angle_radians, 0.0f, 0.0f); }
+    void rotateYaw(float angle_radians) { if (should_rotate) rotate(0.0f, angle_radians, 0.0f); }
+    void rotateRoll(float angle_radians) { if (should_rotate) rotate(0.0f, 0.0f, angle_radians); }
 
 protected:
 
@@ -825,10 +876,10 @@ protected:
     }
 
 
-    void _apply_velocity_to_points(float dt) {
+    void _apply_move_offset_to_points(float dt) {
         // Move all points based on velocity and time delta
-        float velocity_x = velocity.x * dt;
-        float velocity_y = velocity.y * dt;
+        float velocity_x = move_offset.x * dt;
+        float velocity_y = move_offset.y * dt;
         for (auto& p : points_rotated) {
             p.x += velocity_x;
             p.y += velocity_y;

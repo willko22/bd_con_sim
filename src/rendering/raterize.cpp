@@ -103,6 +103,8 @@ static GLint uTrigTableSizeLoc = -1;
 static GLint uTimeLoc = -1;
 static GLint uRotationSpeedLoc = -1;
 static GLint uScreenSizeLoc = -1;  // NEW: for GPU-side NDC conversion
+static GLint uWorldScaleLoc = -1;  // NEW: for GPU-side world coordinate conversion
+static GLint uWorldOffsetLoc = -1; // NEW: for GPU-side world coordinate conversion
 
 // Cached window dimensions for performance
 static int cached_width = 800;
@@ -239,6 +241,8 @@ bool rasterize_init() {
     uTimeLoc = glGetUniformLocation(shaderProgram, "uTime");
     uRotationSpeedLoc = glGetUniformLocation(shaderProgram, "uRotationSpeed");
     uScreenSizeLoc = glGetUniformLocation(shaderProgram, "uScreenSize");  // NEW
+    uWorldScaleLoc = glGetUniformLocation(shaderProgram, "uWorldScale");  // NEW
+    uWorldOffsetLoc = glGetUniformLocation(shaderProgram, "uWorldOffset"); // NEW
     
     std::cout << "Rasterizer initialized successfully" << std::endl;
     return true;
@@ -307,8 +311,10 @@ void end_batch_render() {
     glBindVertexArray(0);
 }
 
+int _buffer_size = 16; // Updated: position(2) + size(2) + color(4) + angles(3) + velocity(2) + spawn_time(1) + flags(2) = 16 floats per instance
 void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles) {
     if (rectangles.empty()) return;
+
     
     // Initialize instanced rendering resources if needed
     static bool instanced_initialized = false;
@@ -345,28 +351,43 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         
         // Set up instance data buffer (empty for now, will be filled each frame)
         glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-        glBufferData(GL_ARRAY_BUFFER, MAX_INSTANCES * 11 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, MAX_INSTANCES * _buffer_size * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
         
-        // Instance attributes: position(2) + size(2) + color(4) + angles(3) = 11 floats per instance
-        // Position offset (location 1)
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)0);
+        // Instance attributes: position(2) + size(2) + color(4) + angles(3) + velocity(2) + spawn_time(1) + flags(2) = 16 floats per instance
+        // Position offset (location 1) - now world coordinates
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)0);
         glEnableVertexAttribArray(1);
         glVertexAttribDivisor(1, 1); // Advance once per instance
         
-        // Size (location 2)
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(2 * sizeof(float)));
+        // Size (location 2) - now world coordinates
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(2 * sizeof(float)));
         glEnableVertexAttribArray(2);
         glVertexAttribDivisor(2, 1);
         
         // Color (location 3)
-        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(4 * sizeof(float)));
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(4 * sizeof(float)));
         glEnableVertexAttribArray(3);
         glVertexAttribDivisor(3, 1);
         
         // Rotation angles (location 4) - 3 components for pitch, yaw, roll
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(8 * sizeof(float)));
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(8 * sizeof(float)));
         glEnableVertexAttribArray(4);
         glVertexAttribDivisor(4, 1);
+        
+        // Velocity (location 5) - 2 components for velocity X and Y in world units per second
+        glVertexAttribPointer(5, 2, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(11 * sizeof(float)));
+        glEnableVertexAttribArray(5);
+        glVertexAttribDivisor(5, 1);
+        
+        // Spawn time (location 6) - 1 component for spawn time in seconds
+        glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(13 * sizeof(float)));
+        glEnableVertexAttribArray(6);
+        glVertexAttribDivisor(6, 1);
+        
+        // Flags (location 7) - 2 components for should_rotate and move flags
+        glVertexAttribPointer(7, 2, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(14 * sizeof(float)));
+        glEnableVertexAttribArray(7);
+        glVertexAttribDivisor(7, 1);
         
         // Persistent OpenGL state setup for better performance (NEW OPTIMIZATION)
         glUseProgram(shaderProgram);
@@ -380,12 +401,12 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     
     // Prepare instance data - use static vector to avoid allocations (OPTIMIZED)
     static std::vector<float> instance_data;
-    instance_data.resize(rectangles.size() * 11); // Resize instead of clear+reserve
+    instance_data.resize(rectangles.size() * _buffer_size); // 16 floats per instance now (added flags)
     
     size_t data_index = 0;
     for (const auto* rect : rectangles) {
         if (!rect) continue;
-        // Pass screen coordinates directly to GPU (NEW OPTIMIZATION)
+        // Send world coordinates to GPU (GPU will convert to screen coordinates)
         float x = rect->center.x;
         float y = rect->center.y;
         float w = rect->width;
@@ -394,18 +415,27 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         // Convert color to float [0,1]
         Color<float> glColor = rect->color.toGL();
         
+        // Get velocity from the rectangle's move_offset (which contains velocity * speed)
+        float velocity_x = rect->move_offset.x;
+        float velocity_y = rect->move_offset.y;
+        
         // Direct array access instead of insert() for better performance
-        instance_data[data_index++] = x;
-        instance_data[data_index++] = y;
-        instance_data[data_index++] = w;
-        instance_data[data_index++] = h;  // Positive height, GPU will handle orientation
-        instance_data[data_index++] = glColor.r;
-        instance_data[data_index++] = glColor.g;
-        instance_data[data_index++] = glColor.b;
-        instance_data[data_index++] = glColor.a;
-        instance_data[data_index++] = rect->initial_pitch;
-        instance_data[data_index++] = rect->initial_yaw;
-        instance_data[data_index++] = rect->initial_roll;
+        instance_data[data_index++] = x;                    // Initial world position X
+        instance_data[data_index++] = y;                    // Initial world position Y
+        instance_data[data_index++] = w;                    // World width
+        instance_data[data_index++] = h;                    // World height
+        instance_data[data_index++] = glColor.r;            // Color R
+        instance_data[data_index++] = glColor.g;            // Color G
+        instance_data[data_index++] = glColor.b;            // Color B
+        instance_data[data_index++] = glColor.a;            // Color A
+        instance_data[data_index++] = rect->initial_pitch;  // Initial pitch angle
+        instance_data[data_index++] = rect->initial_yaw;    // Initial yaw angle
+        instance_data[data_index++] = rect->initial_roll;   // Initial roll angle
+        instance_data[data_index++] = velocity_x;           // Velocity X (world units per second)
+        instance_data[data_index++] = velocity_y;           // Velocity Y (world units per second)
+        instance_data[data_index++] = rect->spawn_time;     // Spawn time (seconds)
+        instance_data[data_index++] = rect->should_rotate ? 1.0f : 0.0f; // Should rotate flag
+        instance_data[data_index++] = rect->move ? 1.0f : 0.0f;          // Move flag
     }
     
     if (instance_data.empty()) return;
@@ -421,6 +451,10 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     glUniform1i(uTrigTableLoc, 0); // Texture unit 0
     glUniform1f(uTrigTableSizeLoc, trigTableSize);
     glUniform2f(uScreenSizeLoc, static_cast<float>(cached_width), static_cast<float>(cached_height)); // NEW
+    
+    // NEW: Pass world coordinate system parameters to GPU
+    glUniform1f(uWorldScaleLoc, world_scale);
+    glUniform2f(uWorldOffsetLoc, world_offset_x, world_offset_y);
     
     // NEW: Pass time and rotation speed to GPU for angle calculation
     glUniform1f(uTimeLoc, static_cast<float>(glfwGetTime()));

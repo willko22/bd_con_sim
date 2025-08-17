@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 #include "entities/objects.h"
 
+
 // Initialize the rasterizer (sets up shaders, buffers, etc.)
 bool rasterize_init();
 
