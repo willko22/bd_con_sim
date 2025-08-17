@@ -140,15 +140,16 @@ int main() {
             last_time = current_time;
         }
 
-        // rotate each rectangle slightly for demonstration (using frame_delta for consistency)
-        float pitch_delta = static_cast<float>(rotation_speed * frame_delta);
-        float yaw_delta = static_cast<float>(rotation_speed * frame_delta);
-        float roll_delta = static_cast<float>(rotation_speed * frame_delta);
+        // No longer need to update angles on CPU - GPU handles this now!
+        // The GPU calculates current angles as: initial_angle + (rotation_speed * time)
+        // This eliminates the bottleneck of updating thousands of rectangles on CPU
         
-        for (auto& rect : rectangles) {
-            rect->rotate(pitch_delta, yaw_delta, roll_delta); // Rotate around all axes
-            // rect->applyPhysics(frame_delta); // Apply physics if needed;
-        }
+        // Note: rotation_speed is passed to GPU via uniform in instanced_draw_rectangles()
+        
+        // OLD CPU-SIDE ANGLE UPDATES (REMOVED):
+        // for (auto& rect : rectangles) {
+        //     rect->rotate(pitch_delta, yaw_delta, roll_delta); // Rotate around all axes
+        // }
         
         // Render the frame
         render_frame(fps);

@@ -1,14 +1,21 @@
 const char* vertexShaderSource = R"(
 #version 460 core
 layout (location = 0) in vec2 aPos;        // Base rectangle vertex position (0-1 range)
-layout (location = 1) in vec2 aOffset;     // Per-instance position offset (NDC)
-layout (location = 2) in vec2 aSize;       // Per-instance size (NDC)
+layout (location = 1) in vec2 aOffset;     // Per-instance position offset (screen coordinates)
+layout (location = 2) in vec2 aSize;       // Per-instance size (screen coordinates)
 layout (location = 3) in vec4 aColor;      // Per-instance color (RGBA)
-layout (location = 4) in vec3 aAngles;     // Per-instance rotation angles (pitch, yaw, roll in radians)
+layout (location = 4) in vec3 aAngles;     // Per-instance INITIAL rotation angles (pitch, yaw, roll in radians)
 
 // Trig table texture and size
 uniform sampler1D uTrigTable;
 uniform float uTrigTableSize;
+
+// Time and rotation speed for GPU-side angle calculation
+uniform float uTime;           // Current time in seconds
+uniform float uRotationSpeed;  // Rotation speed in radians per second
+
+// Screen dimensions for GPU-side NDC conversion (NEW OPTIMIZATION)
+uniform vec2 uScreenSize;     // Screen width and height
 
 out vec4 vertexColor;
 
@@ -32,13 +39,24 @@ void main()
     // aPos goes from (0,0) to (1,1), so center it to (-0.5,-0.5) to (0.5,0.5)
     vec2 centeredPos = aPos - vec2(0.5);
     
-    // Scale first
-    vec2 scaledPos = centeredPos * aSize;
+    // Convert screen coordinates to NDC on GPU (NEW OPTIMIZATION)
+    vec2 ndcOffset = (aOffset / uScreenSize) * 2.0 - 1.0;
+    ndcOffset.y = -ndcOffset.y; // Flip Y coordinate
+    vec2 ndcSize = aSize / uScreenSize * 2.0;
     
-    // Look up trigonometric values from GPU table
-    vec2 pitchTrig = lookupTrig(aAngles.x);  // pitch (X-axis rotation)
-    vec2 yawTrig = lookupTrig(aAngles.y);    // yaw   (Y-axis rotation)  
-    vec2 rollTrig = lookupTrig(aAngles.z);   // roll  (Z-axis rotation)
+    // Scale first using NDC size
+    vec2 scaledPos = centeredPos * ndcSize;
+    
+    // Calculate current angles based on initial angles + (rotation_speed * time)
+    // This moves the angle increment calculation to the GPU!
+    float currentPitch = aAngles.x + (uRotationSpeed * uTime);
+    float currentYaw = aAngles.y + (uRotationSpeed * uTime);
+    float currentRoll = aAngles.z + (uRotationSpeed * uTime);
+    
+    // Look up trigonometric values from GPU table using current angles
+    vec2 pitchTrig = lookupTrig(currentPitch);  // pitch (X-axis rotation)
+    vec2 yawTrig = lookupTrig(currentYaw);      // yaw   (Y-axis rotation)  
+    vec2 rollTrig = lookupTrig(currentRoll);    // roll  (Z-axis rotation)
     
     float sp = pitchTrig.x, cp = pitchTrig.y;  // sin/cos pitch
     float sy = yawTrig.x,   cy = yawTrig.y;    // sin/cos yaw
@@ -62,8 +80,8 @@ void main()
         x * m10 + y * m11
     );
     
-    // Translate to final position
-    gl_Position = vec4(aOffset + rotatedPos, 0.0, 1.0);
+    // Translate to final position using NDC offset
+    gl_Position = vec4(ndcOffset + rotatedPos, 0.0, 1.0);
     vertexColor = aColor;
 }
 )";

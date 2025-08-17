@@ -110,10 +110,14 @@ void render_frame(float& fps) {
 
     end_batch_render();
     
-    // Start the Dear ImGui frame
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
+    // Conditional ImGui rendering for better performance (NEW OPTIMIZATION)
+    static bool show_ui = true; // Toggle with 'U' key or similar
+    
+    if (show_ui) {
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
     
     // Simple FPS window
     ImGui::Begin("FPS");
@@ -141,6 +145,8 @@ void render_frame(float& fps) {
     
     // Render ImGui on top
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
+    // Note: Add 'U' key handler to toggle show_ui in key_captures.cpp for runtime control
 }
 
 void window_cleanup() {

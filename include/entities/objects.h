@@ -568,6 +568,10 @@ struct Polygon {
     float roll = 0.0f;      // 4 bytes (rotation around z-axis - tilting left/right)
     Vec2 center;            // 4 bytes (center point for rotation)
 
+    // Initial angles for GPU-side rotation calculation (NEW)
+    float initial_pitch = 0.0f;  // 4 bytes - base rotation angles
+    float initial_yaw = 0.0f;    // 4 bytes
+    float initial_roll = 0.0f;   // 4 bytes
 
     // Cached trigonometric values - computed once, used many times
     mutable float pitch_sin;
@@ -939,6 +943,11 @@ struct Rectangle : public Polygon {
         : Polygon(c), width(w), height(h) {
         _createRectanglePoints(x, y, w, h);
         _calculateBBox();
+        
+        // Set initial angles for GPU-side rotation calculation
+        initial_pitch = rotation_radians;
+        initial_yaw = rotation_radians;  
+        initial_roll = rotation_radians;
         
         if (rotation_radians != 0.0f) {
             rotate(0.0f, 0.0f, rotation_radians); // Use the new 3-axis rotate function

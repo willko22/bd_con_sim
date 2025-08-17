@@ -108,6 +108,12 @@ std::vector<std::unique_ptr<objects::Rectangle>> spawn_rectangles(float x, float
         
         // Create rectangle as unique pointer (now using pure float coordinates!)
         auto rect = std::make_unique<objects::Rectangle>(adjusted_x, adjusted_y, width, height, color);
+        
+        // Set random initial angles for GPU-side rotation calculation
+        rect->initial_pitch = 2.0f * M_PI * (static_cast<float>(rand()) / RAND_MAX);
+        rect->initial_yaw = 2.0f * M_PI * (static_cast<float>(rand()) / RAND_MAX);
+        rect->initial_roll = 2.0f * M_PI * (static_cast<float>(rand()) / RAND_MAX);
+        
         // Add to vector
         new_rectangles.push_back(std::move(rect));
     }

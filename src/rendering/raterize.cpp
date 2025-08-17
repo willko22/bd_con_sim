@@ -44,6 +44,7 @@
     PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = nullptr;
     PFNGLUNIFORM1IPROC glUniform1i = nullptr;
     PFNGLUNIFORM1FPROC glUniform1f = nullptr;
+    PFNGLUNIFORM2FPROC glUniform2f = nullptr;  // NEW
     
     // Function to load OpenGL function pointers
     void loadOpenGLFunctions() {
@@ -76,6 +77,7 @@
         glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress("glGetUniformLocation");
         glUniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress("glUniform1i");
         glUniform1f = (PFNGLUNIFORM1FPROC)wglGetProcAddress("glUniform1f");
+        glUniform2f = (PFNGLUNIFORM2FPROC)wglGetProcAddress("glUniform2f");  // NEW
     }
 #endif
 
@@ -95,9 +97,20 @@ static const int MAX_INSTANCES = 1000000; // Support up to 500k rectangles
 static GLuint trigTableTexture = 0;
 static float trigTableSize = 0.0f;
 
+// Cached uniform locations for performance (NEW OPTIMIZATION)
+static GLint uTrigTableLoc = -1;
+static GLint uTrigTableSizeLoc = -1;
+static GLint uTimeLoc = -1;
+static GLint uRotationSpeedLoc = -1;
+static GLint uScreenSizeLoc = -1;  // NEW: for GPU-side NDC conversion
+
 // Cached window dimensions for performance
 static int cached_width = 800;
 static int cached_height = 600;
+
+// Cached NDC conversion factors (NEW OPTIMIZATION)
+static float cached_width_inv = 1.0f / 800.0f;
+static float cached_height_inv = 1.0f / 600.0f;
 
 // Reusable vertex buffer for performance
 static std::vector<float> reusable_vertices;
@@ -220,6 +233,13 @@ bool rasterize_init() {
         std::cerr << "Warning: Failed to upload trig table to GPU. Performance may be reduced." << std::endl;
     }
     
+    // Cache uniform locations for performance optimization (NEW)
+    uTrigTableLoc = glGetUniformLocation(shaderProgram, "uTrigTable");
+    uTrigTableSizeLoc = glGetUniformLocation(shaderProgram, "uTrigTableSize"); 
+    uTimeLoc = glGetUniformLocation(shaderProgram, "uTime");
+    uRotationSpeedLoc = glGetUniformLocation(shaderProgram, "uRotationSpeed");
+    uScreenSizeLoc = glGetUniformLocation(shaderProgram, "uScreenSize");  // NEW
+    
     std::cout << "Rasterizer initialized successfully" << std::endl;
     return true;
 }
@@ -260,6 +280,10 @@ void rasterize_cleanup() {
 void update_viewport_cache(int width, int height) {
     cached_width = width;
     cached_height = height;
+    
+    // Cache inverse values to avoid divisions in rendering loop (NEW OPTIMIZATION)
+    cached_width_inv = 1.0f / static_cast<float>(width);
+    cached_height_inv = 1.0f / static_cast<float>(height);
 }
 
 void begin_batch_render() {
@@ -344,35 +368,44 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         glEnableVertexAttribArray(4);
         glVertexAttribDivisor(4, 1);
         
-        glBindVertexArray(0);
+        // Persistent OpenGL state setup for better performance (NEW OPTIMIZATION)
+        glUseProgram(shaderProgram);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_1D, trigTableTexture);
+        
         instanced_initialized = true;
         
         std::cout << "Instanced rendering initialized with support for " << MAX_INSTANCES << " rectangles" << std::endl;
     }
     
-    // Prepare instance data - use static vector to avoid allocations
+    // Prepare instance data - use static vector to avoid allocations (OPTIMIZED)
     static std::vector<float> instance_data;
-    instance_data.clear();
-    instance_data.reserve(rectangles.size() * 11);
+    instance_data.resize(rectangles.size() * 11); // Resize instead of clear+reserve
     
+    size_t data_index = 0;
     for (const auto* rect : rectangles) {
         if (!rect) continue;
-        // Convert rectangle to normalized device coordinates
-        float x = (rect->center.x / cached_width) * 2.0f - 1.0f;
-        float y = 1.0f - (rect->center.y / cached_height) * 2.0f;
-        float w = (rect->width / cached_width) * 2.0f;
-        float h = (rect->height / cached_height) * 2.0f;
+        // Pass screen coordinates directly to GPU (NEW OPTIMIZATION)
+        float x = rect->center.x;
+        float y = rect->center.y;
+        float w = rect->width;
+        float h = rect->height;
         
         // Convert color to float [0,1]
         Color<float> glColor = rect->color.toGL();
         
-        // Add instance data: position(2) + size(2) + color(4) + angles(3) = 11 floats
-        instance_data.insert(instance_data.end(), {
-            x, y,                               // Position offset
-            w, -h,                              // Size (negative height for correct orientation)
-            glColor.r, glColor.g, glColor.b, glColor.a,  // Color (RGBA)
-            rect->pitch, rect->yaw, rect->roll  // Raw rotation angles (radians)
-        });
+        // Direct array access instead of insert() for better performance
+        instance_data[data_index++] = x;
+        instance_data[data_index++] = y;
+        instance_data[data_index++] = w;
+        instance_data[data_index++] = h;  // Positive height, GPU will handle orientation
+        instance_data[data_index++] = glColor.r;
+        instance_data[data_index++] = glColor.g;
+        instance_data[data_index++] = glColor.b;
+        instance_data[data_index++] = glColor.a;
+        instance_data[data_index++] = rect->initial_pitch;
+        instance_data[data_index++] = rect->initial_yaw;
+        instance_data[data_index++] = rect->initial_roll;
     }
     
     if (instance_data.empty()) return;
@@ -381,17 +414,17 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, instance_data.size() * sizeof(float), instance_data.data());
     
-    // Bind trig table texture and set uniforms
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_1D, trigTableTexture);
-    
-    // Draw all instances in a single call!
+    // Minimal state changes - OpenGL state is persistent from initialization (OPTIMIZED)
     glBindVertexArray(instanceVAO);
-    glUseProgram(shaderProgram);
     
-    // Set uniforms
-    glUniform1i(glGetUniformLocation(shaderProgram, "uTrigTable"), 0); // Texture unit 0
-    glUniform1f(glGetUniformLocation(shaderProgram, "uTrigTableSize"), trigTableSize);
+    // Set uniforms using cached locations (PERFORMANCE OPTIMIZATION)
+    glUniform1i(uTrigTableLoc, 0); // Texture unit 0
+    glUniform1f(uTrigTableSizeLoc, trigTableSize);
+    glUniform2f(uScreenSizeLoc, static_cast<float>(cached_width), static_cast<float>(cached_height)); // NEW
+    
+    // NEW: Pass time and rotation speed to GPU for angle calculation
+    glUniform1f(uTimeLoc, static_cast<float>(glfwGetTime()));
+    glUniform1f(uRotationSpeedLoc, rotation_speed);
     
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, rectangles.size()); // 6 vertices per rectangle, N instances
     
