@@ -561,12 +561,14 @@ struct Polygon {
     Color<u8> color;        // 4 bytes
     Vec2List points_original;   // 24 bytes (vector) - non-rotated points
     Vec2List points_rotated;    // 24 bytes (vector) - rotated points
-    BBox bbox;              // 8 bytes
+    BCircle bbox;           // Bounding circle instead of box
     bool filled = true;     // 1 byte (default to filled)
     float pitch = 0.0f;     // 4 bytes (rotation around x-axis - nodding up/down)
     float yaw = 0.0f;       // 4 bytes (rotation around y-axis - turning left/right)
     float roll = 0.0f;      // 4 bytes (rotation around z-axis - tilting left/right)
     Vec2 center;            // 4 bytes (center point for rotation)
+    bool move = false; // 1 byte (indicates if polygon is moving, used for physics)
+    Vec2 velocity; // 8 bytes (velocity vector for physics, if needed)
 
     // Initial angles for GPU-side rotation calculation (NEW)
     float initial_pitch = 0.0f;  // 4 bytes - base rotation angles
@@ -584,12 +586,12 @@ struct Polygon {
 
     Polygon() = default;
     
-    // Constructor with position - BBox is calculated automatically
+    // Constructor with position - BCircle is calculated automatically
     Polygon(const Color<u8>& c, i16 x = 0, i16 y = 0) 
-        : color(c), bbox(static_cast<float>(x), static_cast<float>(y), 0.0f, 0.0f), 
+        : color(c), bbox(Vec2(static_cast<float>(x), static_cast<float>(y)), 0.0f), 
           center(static_cast<float>(x), static_cast<float>(y)) {}
     
-    // Constructor with points - BBox is calculated from points
+    // Constructor with points - BCircle is calculated from points
     Polygon(const Color<u8>& c, const Vec2List& pts) 
         : color(c), points_original(pts), points_rotated(pts) {
         _calculateBBox();
@@ -602,11 +604,41 @@ struct Polygon {
         _movePoly(x, y);
     }
 
+
+    void setVelocity(float vx, float vy) {
+        velocity.x = vx;
+        velocity.y = vy;
+    }
+
+    void setVelocity(const Vec2& v) {
+        velocity = v;
+    }
+
+    void adjustVelocity(float vx, float vy) {
+        velocity.x += vx;
+        velocity.y += vy;
+    }
+
+    void adjustVelocity(const Vec2& v) {
+        velocity += v;
+    }
+
+    void movePolygon(float dt) {
+        if (move) {
+            // Update position based on velocity and time delta
+            center.x += velocity.x * dt;
+            center.y += velocity.y * dt;
+            // Update bounding box and points based on new center
+            _apply_velocity_to_points(dt);
+        }
+    }
+
+
     Color<float> getGLColor() const {
         return color.toGL();
     }
     
-    // Add point and recalculate BBox and center
+    // Add point and recalculate BCircle and center
     void addPoint(i16 x, i16 y) {
         addPoint(x, y, 0); // Default mode: add to current position into both lists
     }
@@ -651,8 +683,8 @@ struct Polygon {
         _calculateBBox();
     }
     
-    // Get the current bounding box
-    const BBox& getBBox() const {
+    // Get the current bounding circle
+    const BCircle& getBBox() const {
         return bbox;
     }
     
@@ -688,12 +720,12 @@ struct Polygon {
     }
     
     
-    // Recalculate BBox and center from current rotated points
+    // Recalculate BCircle and center from current rotated points
     void updateBBox() {
         _calculateBBox();
     }
     
-    // Move polygon so its BBox starts at specified position
+    // Move polygon so its BCircle center is at specified position
     void moveTo(i16 x, i16 y) {
         _movePoly(x, y);
     }
@@ -761,20 +793,17 @@ protected:
 
 
 
-    // Move all points so the bounding box starts at target position
+    // Move all points so the bounding circle center is at target position
     void _movePoly(i16 target_x, i16 target_y) {
         if (points_original.empty()) {
             return;
         }
         
-        float current_x = bbox.x;
-        float current_y = bbox.y;
+        float current_x = bbox.center.x;
+        float current_y = bbox.center.y;
         float target_x_f = static_cast<float>(target_x);
         float target_y_f = static_cast<float>(target_y);
 
-        bbox.x = target_x_f;
-        bbox.y = target_y_f;
-        
         // Calculate offset needed to move polygon to target position
         float offset_x = target_x_f - current_x;
         float offset_y = target_y_f - current_y;
@@ -788,12 +817,31 @@ protected:
             points_rotated[i].y += offset_y;
         }
         
-        // Update center as well
+        // Update center and bounding circle center
         center.x += offset_x;
         center.y += offset_y;
+        bbox.center.x = target_x_f;
+        bbox.center.y = target_y_f;
+    }
+
+
+    void _apply_velocity_to_points(float dt) {
+        // Move all points based on velocity and time delta
+        float velocity_x = velocity.x * dt;
+        float velocity_y = velocity.y * dt;
+        for (auto& p : points_rotated) {
+            p.x += velocity_x;
+            p.y += velocity_y;
+        }
+
     }
 
     void _calculateBBox(bool rotating = false) {
+        if (points_rotated.empty()) {
+            bbox = BCircle(center, 0.0f);
+            return;
+        }
+        
         float min_x = std::numeric_limits<float>::max();
         float min_y = std::numeric_limits<float>::max();
         float max_x = std::numeric_limits<float>::lowest();
@@ -807,13 +855,23 @@ protected:
             max_y = std::max(max_y, p.y);
         }
         
-        // Create float bounding box
-        bbox = BBox(min_x, min_y, max_x - min_x, max_y - min_y);
-        
+        // Calculate center of bounding area
         if (!rotating) {
             center.x = min_x + (max_x - min_x) * 0.5f;
             center.y = min_y + (max_y - min_y) * 0.5f;
         }
+        
+        // Calculate radius as the maximum distance from center to any point
+        float max_distance_squared = 0.0f;
+        for (const auto& p : points_rotated) {
+            float dx = p.x - center.x;
+            float dy = p.y - center.y;
+            float distance_squared = dx * dx + dy * dy;
+            max_distance_squared = std::max(max_distance_squared, distance_squared);
+        }
+        
+        // Create bounding circle
+        bbox = BCircle(center, std::sqrt(max_distance_squared));
     }
 
     void _calculateRotationVariables(float pitch_val, float yaw_val, float roll_val) {
