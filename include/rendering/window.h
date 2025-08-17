@@ -1,22 +1,27 @@
 #pragma once
+
 #include <GLFW/glfw3.h>
+#include "entities/objects.h"
 
 #ifdef _WIN32
 // Force dedicated GPU usage on Windows systems with hybrid graphics
 extern "C" {
     // NVIDIA Optimus
-    __declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+    extern __declspec(dllexport) unsigned long NvOptimusEnablement;
     
     // AMD PowerXpress
-    __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+    extern __declspec(dllexport) int AmdPowerXpressRequestHighPerformance;
 }
 #endif
+
+
+
 
 
 std::pair<bool, GLFWwindow*> window_init();
 
 // Render function that handles the entire frame rendering
-void render_frame(float fps);
+void render_frame(float& fps);
 
 // Cleanup function to properly dispose of rendering resources
 void window_cleanup();

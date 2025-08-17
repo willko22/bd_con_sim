@@ -1,10 +1,12 @@
 #include "rendering/rasterize.h"
 #include <iostream>
 #include <string>
+#include <cmath>
 #include <GLFW/glfw3.h>
 
 #include "rendering/vertex_shader.h"
 #include "rendering/fragment_shader.h"
+#include "utils/globals.h" // For trig_table access
 
 // OpenGL function pointers for Windows
 #ifdef _WIN32
@@ -35,6 +37,13 @@
     PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = nullptr;
     PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = nullptr;
     PFNGLDELETEBUFFERSPROC glDeleteBuffers = nullptr;
+    PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor = nullptr;
+    PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced = nullptr;
+    PFNGLBUFFERSUBDATAPROC glBufferSubData = nullptr;
+    PFNGLACTIVETEXTUREPROC glActiveTexture = nullptr;
+    PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = nullptr;
+    PFNGLUNIFORM1IPROC glUniform1i = nullptr;
+    PFNGLUNIFORM1FPROC glUniform1f = nullptr;
     
     // Function to load OpenGL function pointers
     void loadOpenGLFunctions() {
@@ -60,14 +69,38 @@
         glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glEnableVertexAttribArray");
         glDeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)wglGetProcAddress("glDeleteVertexArrays");
         glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)wglGetProcAddress("glDeleteBuffers");
+        glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)wglGetProcAddress("glVertexAttribDivisor");
+        glDrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)wglGetProcAddress("glDrawArraysInstanced");
+        glBufferSubData = (PFNGLBUFFERSUBDATAPROC)wglGetProcAddress("glBufferSubData");
+        glActiveTexture = (PFNGLACTIVETEXTUREPROC)wglGetProcAddress("glActiveTexture");
+        glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress("glGetUniformLocation");
+        glUniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress("glUniform1i");
+        glUniform1f = (PFNGLUNIFORM1FPROC)wglGetProcAddress("glUniform1f");
     }
 #endif
 
 
 // Global OpenGL objects
-static unsigned int shaderProgram = 0;
+static unsigned int shaderProgram = 0;      // Instanced rendering shader
+static unsigned int batchShaderProgram = 0; // Batch rendering shader (fallback)
 static unsigned int VAO = 0;
 static unsigned int VBO = 0;
+
+// Global variables for instanced rendering
+static GLuint instanceVBO = 0;
+static GLuint instanceVAO = 0;
+static const int MAX_INSTANCES = 1000000; // Support up to 500k rectangles
+
+// GPU trig table
+static GLuint trigTableTexture = 0;
+static float trigTableSize = 0.0f;
+
+// Cached window dimensions for performance
+static int cached_width = 800;
+static int cached_height = 600;
+
+// Reusable vertex buffer for performance
+static std::vector<float> reusable_vertices;
 
 
 // Helper function to compile shader
@@ -88,6 +121,43 @@ static unsigned int compileShader(unsigned int type, const char* source) {
     return shader;
 }
 
+// Function to upload trig table to GPU as a 1D texture
+static bool uploadTrigTableToGPU() {
+    if (trig_table.empty()) {
+        std::cerr << "Error: Trig table is empty. Make sure to call precompute_trig_table() first." << std::endl;
+        return false;
+    }
+    
+    // Store the table size for shader
+    trigTableSize = static_cast<float>(trig_table_size);
+    
+    // Prepare texture data (interleaved sin, cos values for RG format)
+    std::vector<float> textureData;
+    textureData.reserve(trig_table.size() * 2);
+    for (const auto& entry : trig_table) {
+        textureData.push_back(entry.first);  // sin value (R channel)
+        textureData.push_back(entry.second); // cos value (G channel)
+    }
+    
+    // Create and upload the texture
+    glGenTextures(1, &trigTableTexture);
+    glBindTexture(GL_TEXTURE_1D, trigTableTexture);
+    
+    // Upload data as RG32F texture (Red = sin, Green = cos)
+    // The width should be trig_table.size(), not trig_table.size() * 2
+    glTexImage1D(GL_TEXTURE_1D, 0, GL_RG32F, trig_table.size(), 0, GL_RG, GL_FLOAT, textureData.data());
+    
+    // Set texture parameters
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // No interpolation for lookup table
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    
+    glBindTexture(GL_TEXTURE_1D, 0);
+    
+    std::cout << "Uploaded trig table to GPU with " << trig_table.size() << " entries" << std::endl;
+    return true;
+}
+
 bool rasterize_init() {
 #ifdef _WIN32
     // Load OpenGL function pointers
@@ -100,13 +170,16 @@ bool rasterize_init() {
     }
 #endif
     
-    // Compile shaders
-    unsigned int vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource);
+    // Compile shaders for instanced rendering
+    unsigned int instancedVertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource);
     unsigned int fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
     
-    // Create shader program
+    // // Compile shaders for batch rendering (fallback)
+    // unsigned int batchVertexShader = compileShader(GL_VERTEX_SHADER, batchVertexShaderSource);
+    
+    // Create instanced shader program
     shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, instancedVertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
     
@@ -116,17 +189,36 @@ bool rasterize_init() {
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
     if (!success) {
         glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
-        std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+        std::cerr << "ERROR::INSTANCED_SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
         return false;
     }
     
+    // Create batch shader program
+    // batchShaderProgram = glCreateProgram();
+    // glAttachShader(batchShaderProgram, batchVertexShader);
+    // glAttachShader(batchShaderProgram, fragmentShader);
+    // glLinkProgram(batchShaderProgram);
+    
+    // glGetProgramiv(batchShaderProgram, GL_LINK_STATUS, &success);
+    // if (!success) {
+    //     glGetProgramInfoLog(batchShaderProgram, 512, nullptr, infoLog);
+    //     std::cerr << "ERROR::BATCH_SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+    //     return false;
+    // }
+    
     // Clean up individual shaders
-    glDeleteShader(vertexShader);
+    glDeleteShader(instancedVertexShader);
+    // glDeleteShader(batchVertexShader);
     glDeleteShader(fragmentShader);
     
     // Generate VAO and VBO
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
+    
+    // Upload trig table to GPU
+    if (!uploadTrigTableToGPU()) {
+        std::cerr << "Warning: Failed to upload trig table to GPU. Performance may be reduced." << std::endl;
+    }
     
     std::cout << "Rasterizer initialized successfully" << std::endl;
     return true;
@@ -145,91 +237,280 @@ void rasterize_cleanup() {
         glDeleteProgram(shaderProgram);
         shaderProgram = 0;
     }
+    if (batchShaderProgram != 0) {
+        glDeleteProgram(batchShaderProgram);
+        batchShaderProgram = 0;
+    }
+    // Clean up instanced rendering resources
+    if (instanceVBO != 0) {
+        glDeleteBuffers(1, &instanceVBO);
+        instanceVBO = 0;
+    }
+    if (instanceVAO != 0) {
+        glDeleteVertexArrays(1, &instanceVAO);
+        instanceVAO = 0;
+    }
+    if (trigTableTexture != 0) {
+        glDeleteTextures(1, &trigTableTexture);
+        trigTableTexture = 0;
+    }
     std::cout << "Rasterizer cleaned up" << std::endl;
 }
 
-void draw_test_triangle() {
+void update_viewport_cache(int width, int height) {
+    cached_width = width;
+    cached_height = height;
+}
+
+void begin_batch_render() {
     if (shaderProgram == 0) {
         std::cerr << "Rasterizer not initialized! Call rasterize_init() first." << std::endl;
         return;
     }
     
-    // Triangle vertices with positions and colors
-    // Format: x, y, r, g, b, a
-    float vertices[] = {
-        // Top vertex (red)
-         0.0f,  0.5f,   1.0f, 0.0f, 0.0f, 1.0f, // Position (0, 0.5) and color red
-        // Bottom left vertex (green)  
-        -0.5f, -0.5f,   0.0f, 1.0f, 0.0f, 1.0f,
-        // Bottom right vertex (blue)
-         0.5f, -0.5f,   0.0f, 0.0f, 1.0f, 1.0f,
-    };
-    
-    // Bind VAO
+    // Setup OpenGL state once for all polygons (MAJOR OPTIMIZATION!)
     glBindVertexArray(VAO);
-    
-    // Bind and fill VBO
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-    
-    // Set vertex attribute pointers
-    // Position attribute (location 0)
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    
-    // Color attribute (location 1)
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
-    
-    // Use shader program and draw
     glUseProgram(shaderProgram);
-    glDrawArrays(GL_TRIANGLES, 0, 4);
-    
-    // Unbind
+}
+
+void end_batch_render() {
+    // Unbind after all drawing
     glBindVertexArray(0);
 }
 
-void draw_polygon(const objects::Polygon& polygon) {
-    if (shaderProgram == 0) {
-        std::cerr << "Rasterizer not initialized! Call rasterize_init() first." << std::endl;
+void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles) {
+    if (rectangles.empty()) return;
+    
+    // Initialize instanced rendering resources if needed
+    static bool instanced_initialized = false;
+    if (!instanced_initialized) {
+            
+        // Create instance data buffer
+        glGenBuffers(1, &instanceVBO);
+        glGenVertexArrays(1, &instanceVAO);
+        
+        // Set up the base rectangle geometry (unit square)
+        constexpr static float base_vertices[] = {
+            // Triangle 1
+            0.0f, 0.0f,  // Bottom-left
+            1.0f, 0.0f,  // Bottom-right  
+            0.0f, 1.0f,  // Top-left
+            
+            // Triangle 2
+            1.0f, 0.0f,  // Bottom-right
+            1.0f, 1.0f,  // Top-right
+            0.0f, 1.0f   // Top-left
+        };
+        
+        glBindVertexArray(instanceVAO);
+        
+        // Upload base geometry
+        GLuint geometryVBO;
+        glGenBuffers(1, &geometryVBO);
+        glBindBuffer(GL_ARRAY_BUFFER, geometryVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(base_vertices), base_vertices, GL_STATIC_DRAW);
+        
+        // Set vertex attribute for position (location 0)
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        
+        // Set up instance data buffer (empty for now, will be filled each frame)
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+        glBufferData(GL_ARRAY_BUFFER, MAX_INSTANCES * 11 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        
+        // Instance attributes: position(2) + size(2) + color(4) + angles(3) = 11 floats per instance
+        // Position offset (location 1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribDivisor(1, 1); // Advance once per instance
+        
+        // Size (location 2)
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(2 * sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribDivisor(2, 1);
+        
+        // Color (location 3)
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(4 * sizeof(float)));
+        glEnableVertexAttribArray(3);
+        glVertexAttribDivisor(3, 1);
+        
+        // Rotation angles (location 4) - 3 components for pitch, yaw, roll
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(float), (void*)(8 * sizeof(float)));
+        glEnableVertexAttribArray(4);
+        glVertexAttribDivisor(4, 1);
+        
+        glBindVertexArray(0);
+        instanced_initialized = true;
+        
+        std::cout << "Instanced rendering initialized with support for " << MAX_INSTANCES << " rectangles" << std::endl;
+    }
+    
+    // Prepare instance data - use static vector to avoid allocations
+    static std::vector<float> instance_data;
+    instance_data.clear();
+    instance_data.reserve(rectangles.size() * 11);
+    
+    for (const auto* rect : rectangles) {
+        if (!rect) continue;
+        // Convert rectangle to normalized device coordinates
+        float x = (rect->center.x / cached_width) * 2.0f - 1.0f;
+        float y = 1.0f - (rect->center.y / cached_height) * 2.0f;
+        float w = (rect->width / cached_width) * 2.0f;
+        float h = (rect->height / cached_height) * 2.0f;
+        
+        // Convert color to float [0,1]
+        Color<float> glColor = rect->color.toGL();
+        
+        // Add instance data: position(2) + size(2) + color(4) + angles(3) = 11 floats
+        instance_data.insert(instance_data.end(), {
+            x, y,                               // Position offset
+            w, -h,                              // Size (negative height for correct orientation)
+            glColor.r, glColor.g, glColor.b, glColor.a,  // Color (RGBA)
+            rect->pitch, rect->yaw, rect->roll  // Raw rotation angles (radians)
+        });
+    }
+    
+    if (instance_data.empty()) return;
+    
+    // Upload instance data
+    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, instance_data.size() * sizeof(float), instance_data.data());
+    
+    // Bind trig table texture and set uniforms
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_1D, trigTableTexture);
+    
+    // Draw all instances in a single call!
+    glBindVertexArray(instanceVAO);
+    glUseProgram(shaderProgram);
+    
+    // Set uniforms
+    glUniform1i(glGetUniformLocation(shaderProgram, "uTrigTable"), 0); // Texture unit 0
+    glUniform1f(glGetUniformLocation(shaderProgram, "uTrigTableSize"), trigTableSize);
+    
+    glDrawArraysInstanced(GL_TRIANGLES, 0, 6, rectangles.size()); // 6 vertices per rectangle, N instances
+    
+    glBindVertexArray(0);
+}
+
+
+
+// ############# DEPRECATED #############
+
+void draw_center_dots(const std::vector<objects::Rectangle*>& rectangles) {
+    if (rectangles.empty()) return;
+    
+    // Use the batch shader for simple rendering
+    glUseProgram(batchShaderProgram);
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    
+    // Enable point rendering and set point size
+    glEnable(GL_PROGRAM_POINT_SIZE);
+    glPointSize(3.0f);
+    
+    // Reuse static vector to avoid allocations
+    static std::vector<float> dot_vertices;
+    dot_vertices.clear();
+    dot_vertices.reserve(rectangles.size() * 6); // 6 floats per dot (2 pos + 4 color)
+    
+    for (const auto* rect : rectangles) {
+        if (!rect) continue;
+        
+        // Convert to normalized device coordinates
+        float x = (rect->center.x / cached_width) * 2.0f - 1.0f;
+        float y = 1.0f - (rect->center.y / cached_height) * 2.0f;
+        
+        // Add vertex data: position + bright red color
+        dot_vertices.insert(dot_vertices.end(), {
+            x, y,                           // Position
+            1.0f, 0.0f, 0.0f, 1.0f         // Bright red color (RGBA)
+        });
+    }
+    
+    if (dot_vertices.empty()) return;
+    
+    // Upload vertex data
+    glBufferData(GL_ARRAY_BUFFER, dot_vertices.size() * sizeof(float), dot_vertices.data(), GL_DYNAMIC_DRAW);
+    
+    // Set vertex attribute pointers for position and color
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    
+    
+    // Draw points
+    glDrawArrays(GL_POINTS, 0, dot_vertices.size() / 6);
+    
+    // Cleanup
+    glDisable(GL_PROGRAM_POINT_SIZE);
+    glBindVertexArray(0);
+}
+
+void batch_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles) {
+    if (shaderProgram == 0 || rectangles.empty()) {
         return;
     }
     
-    const objects::Vec2List& points = polygon.getRotatedPoints();
-    if (points.size() < 3) {
-        return; // Need at least 3 points for a polygon
-    }
+    // Calculate total vertices needed (6 vertices per rectangle for 2 triangles)
+    size_t total_vertices = rectangles.size() * 6;
+    std::vector<float> batch_vertices;
+    batch_vertices.reserve(total_vertices * 5); // 5 floats per vertex (2 pos + 3 color)
     
-    // Get polygon color in OpenGL format
-    Color<float> glColor = polygon.getGLColor();
-    
-    // Create vertices array (position + color for each vertex)
-    std::vector<float> vertices;
-    vertices.reserve(points.size() * 5); // 2 pos + 3 color per vertex
-    
-    // Get window size for coordinate conversion
-    int width, height;
-    GLFWwindow* window = glfwGetCurrentContext();
-    glfwGetWindowSize(window, &width, &height);
-    
-    for (const auto& point : points) {
-        // Convert from pixel coordinates to normalized device coordinates (-1 to 1)
-        float x = (2.0f * point.x / width) - 1.0f;
-        float y = 1.0f - (2.0f * point.y / height); // Flip Y axis
+    // Build vertex data for all rectangles
+    for (const auto* rect : rectangles) {
+        const objects::Vec2List& points = rect->getRotatedPoints();
+        if (points.size() != 4) continue; // Skip non-rectangle polygons
         
-        vertices.push_back(x);
-        vertices.push_back(y);
-        vertices.push_back(glColor.r);
-        vertices.push_back(glColor.g);
-        vertices.push_back(glColor.b);
+        // Get rectangle color in OpenGL format
+        Color<float> glColor = rect->getGLColor();
+        
+        // Convert rectangle (4 vertices) to 2 triangles (6 vertices)
+        // Triangle 1: points[0], points[1], points[2]
+        // Triangle 2: points[0], points[2], points[3]
+        
+        const auto& p0 = points[0];
+        const auto& p1 = points[1];
+        const auto& p2 = points[2];
+        const auto& p3 = points[3];
+        
+        // Convert to normalized device coordinates
+        float x0 = (2.0f * p0.x / cached_width) - 1.0f;
+        float y0 = 1.0f - (2.0f * p0.y / cached_height);
+        float x1 = (2.0f * p1.x / cached_width) - 1.0f;
+        float y1 = 1.0f - (2.0f * p1.y / cached_height);
+        float x2 = (2.0f * p2.x / cached_width) - 1.0f;
+        float y2 = 1.0f - (2.0f * p2.y / cached_height);
+        float x3 = (2.0f * p3.x / cached_width) - 1.0f;
+        float y3 = 1.0f - (2.0f * p3.y / cached_height);
+        
+        // Triangle 1: p0, p1, p2
+        batch_vertices.insert(batch_vertices.end(), {
+            x0, y0, glColor.r, glColor.g, glColor.b,
+            x1, y1, glColor.r, glColor.g, glColor.b,
+            x2, y2, glColor.r, glColor.g, glColor.b
+        });
+        
+        // Triangle 2: p0, p2, p3
+        batch_vertices.insert(batch_vertices.end(), {
+            x0, y0, glColor.r, glColor.g, glColor.b,
+            x2, y2, glColor.r, glColor.g, glColor.b,
+            x3, y3, glColor.r, glColor.g, glColor.b
+        });
     }
     
-    // Bind VAO
-    glBindVertexArray(VAO);
+    if (batch_vertices.empty()) return;
     
-    // Bind and fill VBO
+    // Upload all vertex data at once
+    glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, batch_vertices.size() * sizeof(float), batch_vertices.data(), GL_DYNAMIC_DRAW);
     
     // Set vertex attribute pointers
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
@@ -237,22 +518,10 @@ void draw_polygon(const objects::Polygon& polygon) {
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
     
-    // Use shader program and draw
-    glUseProgram(shaderProgram);
-    
-    if (polygon.filled) {
-        // Draw filled polygon using triangle fan
-        glDrawArrays(GL_TRIANGLE_FAN, 0, points.size());
-    } else {
-        // Draw outline using line loop
-        glDrawArrays(GL_LINE_LOOP, 0, points.size());
-    }
+    // Draw all rectangles in a single draw call!
+    glUseProgram(batchShaderProgram);
+    glDrawArrays(GL_TRIANGLES, 0, batch_vertices.size() / 5);
     
     // Unbind
     glBindVertexArray(0);
-}
-
-void draw_rectangle(const objects::Rectangle& rectangle) {
-    // Rectangle inherits from Polygon, so we can just call draw_polygon
-    draw_polygon(rectangle);
 }

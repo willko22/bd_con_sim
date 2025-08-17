@@ -12,18 +12,22 @@
 #include "rendering/window.h"
 #include "utils/globals.h"
 
+// #include "rendering/rasterize.h"
+
 
 // Error callback for GLFW
 void error_callback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
 
-// Global variable definitions with default values
 
 
 int main() {
     std::cout << "Initializing GLFW and OpenGL..." << std::endl;
     
+    //precompute sine and cosine values for angles
+    precompute_trig_angles();
+
     // Set error callback
     glfwSetErrorCallback(error_callback);
     
@@ -103,20 +107,47 @@ int main() {
     
     // Simple FPS tracking
     double last_time = glfwGetTime();
+    double last_frame_time = last_time; // Track time for frame delta
     int frame_count = 0;
     float fps = 0.0f;
-    
+
+    // // Move new rectangles to the global vector and add pointers to render order
+    // for (auto& rect : new_rectangles) {
+    //     objects::Rectangle* rect_ptr = rect.get();
+    //     rectangles.push_back(std::move(rect));
+    //     render_order[0].push_back(rect_ptr); // Add to render order for key 0
+    // }
+
+
     // Main loop
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        // Calculate FPS
+        // Calculate FPS and frame delta
         double current_time = glfwGetTime();
+        double frame_delta = current_time - last_frame_time; // Time since last frame
+        last_frame_time = current_time;
+        
+        // Update mouse hold duration and handle continuous hold behavior
+        update_mouse_hold_duration(frame_delta);
+        handle_mouse_hold_continuous();
+        
         frame_count++;
-        if (current_time - last_time >= 1.0) {
-            fps = frame_count / (current_time - last_time);
+        double fps_delta = current_time - last_time; // Time since last FPS update
+        if (fps_delta >= 1.0) {
+            fps = frame_count / fps_delta;
             frame_count = 0;
             last_time = current_time;
+        }
+
+        // rotate each rectangle slightly for demonstration (using frame_delta for consistency)
+        float pitch_delta = static_cast<float>(rotation_speed * frame_delta);
+        float yaw_delta = static_cast<float>(rotation_speed * frame_delta);
+        float roll_delta = static_cast<float>(rotation_speed * frame_delta);
+        
+        for (auto& rect : rectangles) {
+            rect->rotate(pitch_delta, yaw_delta, roll_delta); // Rotate around all axes
+            // rect->applyPhysics(frame_delta); // Apply physics if needed;
         }
         
         // Render the frame
@@ -143,3 +174,4 @@ int main() {
     
     return 0;
 }
+

@@ -48,4 +48,33 @@ The project uses CMake as the build system with convenient batch files:
 - **EnTT** - Modern header-only entity component system
 - **Sokol** - Minimal cross-platform graphics library
 
+## Development Standards
+
+### C++ Version
+- **C++23** (Latest features and standards)
+
+### Naming Conventions
+- **Constants**: `CONSTANTS` (ALL_CAPS with underscores)
+- **Classes**: `ClassNameHere` (PascalCase)
+- **Functions**: `functionName` (camelCase)
+- **Variables**: `variable_name` (snake_case)
+- **Private Members**: `_private_variable_name` (leading underscore + snake_case)
+
+### Comment Style
+```cpp
+########## MAJOR SECTION TITLE ##########
+
+========== Section Title ==========
+
+---------- subsection title ----------
+
+// Regular comment
+```
+
+### Code Organization
+- Header files in `include/` directory
+- Source files in `src/` directory
+- Third-party libraries in `libs/` directory
+- Assets in `assets/` directory
+
 See `docs/LIBRARIES.md` for detailed information about the libraries.

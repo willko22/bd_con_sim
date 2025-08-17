@@ -2,19 +2,17 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdint>
 #include <vector>
 #include <unordered_set>
 #include <memory>
 #include <cmath>
+#include <limits>
+#include <functional>
 
+#include "utils/globals.h"
 
 // Instead of size_t (64-bit), use smaller types:
-using u16 = uint16_t;  // 0-65k range - fine for dimensions, colors
-using u8 = uint8_t;    // 0-255 range - perfect for counters, colors
-using u32 = uint32_t;  // 0-4B range - for calculations that might overflow u16
-using i32 = int32_t;   // Signed 32-bit for offset calculations
-using i16 = int16_t;   // -32k to +32k range - fine for screen coordinates
+
 constexpr float inv255 = 1.0f / 255.0f;
 
 template<typename T>
@@ -55,22 +53,27 @@ struct Color {
 namespace objects {
 
 struct Vec2 {
-    i16 x, y;
-    constexpr Vec2() noexcept : x(0), y(0) {}
-    constexpr Vec2(i16 x, i16 y) noexcept : x(x), y(y) {}
+    float x, y;
+    constexpr Vec2() noexcept : x(0.0f), y(0.0f) {}
+    constexpr Vec2(float x, float y) noexcept : x(x), y(y) {}
+    
+    // Convenience constructors for integer inputs (common in games)
+    constexpr Vec2(int x, int y) noexcept : x(static_cast<float>(x)), y(static_cast<float>(y)) {}
+    constexpr Vec2(i16 x, i16 y) noexcept : x(static_cast<float>(x)), y(static_cast<float>(y)) {}
     
     // Array-style access: [0] = x, [1] = y
-    constexpr i16& operator[](size_t index) noexcept {
+    constexpr float& operator[](size_t index) noexcept {
         return index == 0 ? x : y;
     }
     
-    constexpr const i16& operator[](size_t index) const noexcept {
+    constexpr const float& operator[](size_t index) const noexcept {
         return index == 0 ? x : y;
     }
     
-    // For use in unordered_set
+    // For use in unordered_set (with epsilon comparison for floats)
     constexpr bool operator==(const Vec2& other) const noexcept {
-        return x == other.x && y == other.y;
+        constexpr float epsilon = 0.001f;
+        return std::abs(x - other.x) < epsilon && std::abs(y - other.y) < epsilon;
     }
     
     // Vector operations for game math
@@ -82,44 +85,113 @@ struct Vec2 {
         return Vec2(x - other.x, y - other.y);
     }
     
-    constexpr Vec2 operator*(i16 scalar) const noexcept {
+    constexpr Vec2 operator*(float scalar) const noexcept {
         return Vec2(x * scalar, y * scalar);
     }
     
+    constexpr Vec2 operator/(float scalar) const noexcept {
+        return Vec2(x / scalar, y / scalar);
+    }
+    
+    // Compound assignment operators
+    Vec2& operator+=(const Vec2& other) noexcept {
+        x += other.x;
+        y += other.y;
+        return *this;
+    }
+    
+    Vec2& operator-=(const Vec2& other) noexcept {
+        x -= other.x;
+        y -= other.y;
+        return *this;
+    }
+    
+    Vec2& operator*=(float scalar) noexcept {
+        x *= scalar;
+        y *= scalar;
+        return *this;
+    }
+    
+    Vec2& operator/=(float scalar) noexcept {
+        x /= scalar;
+        y /= scalar;
+        return *this;
+    }
+    
     // Dot product for distance calculations
-    constexpr i32 dot(const Vec2& other) const noexcept {
-        return static_cast<i32>(x) * other.x + static_cast<i32>(y) * other.y;
+    constexpr float dot(const Vec2& other) const noexcept {
+        return x * other.x + y * other.y;
+    }
+    
+    // Cross product (returns scalar for 2D)
+    constexpr float cross(const Vec2& other) const noexcept {
+        return x * other.y - y * other.x;
     }
     
     // Squared magnitude (avoids sqrt for distance comparisons)
-    constexpr i32 magnitudeSquared() const noexcept {
-        return static_cast<i32>(x) * x + static_cast<i32>(y) * y;
+    constexpr float magnitudeSquared() const noexcept {
+        return x * x + y * y;
     }
     
     // Magnitude (actual length)
     float magnitude() const noexcept {
-        return std::sqrt(static_cast<float>(magnitudeSquared()));
+        return std::sqrt(magnitudeSquared());
     }
     
     // Normalize vector to unit length
     Vec2 normalize() const noexcept {
-        float mag = magnitude();
+        const float mag = magnitude();
         if (mag > 0.0f) {
-            float inv_mag = 1.0f / mag;
-            return Vec2(static_cast<i16>(x * inv_mag), static_cast<i16>(y * inv_mag));
+            const float inv_mag = 1.0f / mag;
+            return Vec2(x * inv_mag, y * inv_mag);
         }
-        return Vec2(0, 0);
+        return Vec2(0.0f, 0.0f);
     }
+    
+    // Linear interpolation between two vectors
+    static Vec2 lerp(const Vec2& a, const Vec2& b, float t) noexcept {
+        return Vec2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    }
+    
+    // Distance between two points
+    float distanceTo(const Vec2& other) const noexcept {
+        return (*this - other).magnitude();
+    }
+    
+    // Distance squared (faster for comparisons)
+    float distanceSquaredTo(const Vec2& other) const noexcept {
+        return (*this - other).magnitudeSquared();
+    }
+    
+    // Convert to integer coordinates (for pixel-perfect rendering)
+    Vec2 toInt() const noexcept {
+        return Vec2(std::round(x), std::round(y));
+    }
+    
+    // Floor to integer coordinates
+    Vec2 floor() const noexcept {
+        return Vec2(std::floor(x), std::floor(y));
+    }
+    
+    // Ceiling to integer coordinates
+    Vec2 ceil() const noexcept {
+        return Vec2(std::ceil(x), std::ceil(y));
+    }
+    
+    // Get integer x and y (for compatibility with existing code)
+    i16 getIntX() const noexcept { return static_cast<i16>(std::round(x)); }
+    i16 getIntY() const noexcept { return static_cast<i16>(std::round(y)); }
 };
 
 // Hash function for Vec2 to use in unordered_set
 struct Vec2Hash {
-    constexpr u16 operator()(const Vec2& v) const noexcept {
-        // Morton encoding for better spatial locality
-        // Combines both coordinates into a single hash more efficiently
-        u16 ux = static_cast<u16>(v.x + 32768); // Shift to unsigned range
-        u16 uy = static_cast<u16>(v.y + 32768);
-        return static_cast<u16>((ux << 8) | uy) ^ ((uy << 4) | (ux >> 4));
+    constexpr u32 operator()(const Vec2& v) const noexcept {
+        // Convert floats to integers for hashing (with reasonable precision)
+        const u32 x_hash = std::hash<float>{}(std::round(v.x * 1000.0f) / 1000.0f);
+        const u32 y_hash = std::hash<float>{}(std::round(v.y * 1000.0f) / 1000.0f);
+        
+        // Combine hashes using a good mixing function
+        return x_hash ^ (y_hash + 0x9e3779b9 + (x_hash << 6) + (x_hash >> 2));
     }
 };
 
@@ -135,8 +207,12 @@ struct Vec2Set {
         points.reserve(capacity);
     }
     
-    void add(i16 x, i16 y) noexcept {
+    void add(float x, float y) noexcept {
         points.emplace(x, y);
+    }
+    
+    void add(i16 x, i16 y) noexcept {
+        points.emplace(static_cast<float>(x), static_cast<float>(y));
     }
     
     void add(const Vec2& v) noexcept {
@@ -174,8 +250,12 @@ struct Vec2List {
         return list;
     }
     
-    void add(i16 x, i16 y) {
+    void add(float x, float y) {
         points.emplace_back(x, y);
+    }
+    
+    void add(i16 x, i16 y) {
+        points.emplace_back(static_cast<float>(x), static_cast<float>(y));
     }
     
     void add(const Vec2& v) {
@@ -227,11 +307,218 @@ struct Vec2List {
 };
 
 struct BBox {
-    i16 x, y; // left top - can be negative
-    u16 width, height; // dimensions - always positive
+    float x, y; // left top - can be negative
+    float width, height; // dimensions - always positive
     
-    BBox() : x(0), y(0), width(0), height(0) {}
-    BBox(i16 x, i16 y, u16 width, u16 height) : x(x), y(y), width(width), height(height) {}
+    BBox() : x(0.0f), y(0.0f), width(0.0f), height(0.0f) {}
+    BBox(float x, float y, float width, float height) : x(x), y(y), width(width), height(height) {}
+    
+    // Convenience constructors for integer inputs
+    BBox(i16 x, i16 y, u16 width, u16 height) 
+        : x(static_cast<float>(x)), y(static_cast<float>(y)), 
+          width(static_cast<float>(width)), height(static_cast<float>(height)) {}
+    
+    // Check if a point is inside the bounding box
+    bool contains(const Vec2& point) const noexcept {
+        return point.x >= x && point.x <= x + width && 
+               point.y >= y && point.y <= y + height;
+    }
+    
+    // Check if another bounding box intersects with this one
+    bool intersects(const BBox& other) const noexcept {
+        return x < other.x + other.width && 
+               x + width > other.x && 
+               y < other.y + other.height && 
+               y + height > other.y;
+    }
+    
+    // Get center point of the bounding box
+    Vec2 getCenter() const noexcept {
+        return Vec2(x + width * 0.5f, y + height * 0.5f);
+    }
+    
+    // Get area of the bounding box
+    float getArea() const noexcept {
+        return width * height;
+    }
+    
+    // Expand bounding box by a margin
+    BBox expand(float margin) const noexcept {
+        return BBox(x - margin, y - margin, width + 2 * margin, height + 2 * margin);
+    }
+    
+    // Convert to integer bounding box (for pixel-perfect operations)
+    BBox toInt() const noexcept {
+        return BBox(std::floor(x), std::floor(y), 
+                   std::ceil(width), std::ceil(height));
+    }
+    
+    // Get integer coordinates (for compatibility)
+    i16 getIntX() const noexcept { return static_cast<i16>(std::round(x)); }
+    i16 getIntY() const noexcept { return static_cast<i16>(std::round(y)); }
+    u16 getIntWidth() const noexcept { return static_cast<u16>(std::round(width)); }
+    u16 getIntHeight() const noexcept { return static_cast<u16>(std::round(height)); }
+};
+
+struct BCircle {
+    Vec2 center; // Center of the circle
+    float radius; // Radius of the circle (6 decimal precision)
+    
+    // Cache radius squared to avoid repeated multiplication
+    mutable float radius_squared;
+    
+    BCircle() noexcept : center(0, 0), radius(0.0f), radius_squared(0.0f) {}
+    BCircle(const Vec2& center, float radius) noexcept : center(center), radius(radius) {
+        setRadius(radius);
+    }
+    BCircle(i16 x, i16 y, float radius) noexcept : center(x, y), radius(radius) {
+        setRadius(radius);
+    }
+
+    // Update radius and precompute radius squared
+    void setRadius(float new_radius) noexcept {
+        radius = new_radius;
+        radius_squared = new_radius * new_radius;
+    }
+    
+    // Fast distance squared calculation - optimized with float precision
+    inline float distanceSquaredTo(const Vec2& point) const noexcept {
+        const float dx = point.x - center.x;
+        const float dy = point.y - center.y;
+        return dx * dx + dy * dy;
+    }
+
+    // Fast distance squared to another circle's center
+    inline float distanceSquaredTo(const BCircle& other) const noexcept {
+        return distanceSquaredTo(other.center);
+    }
+
+    // Optimized point containment check
+    inline bool contains(const Vec2& point) const noexcept {
+        return distanceSquaredTo(point) <= radius_squared;
+    }
+    
+    // Optimized circle intersection with early exits and branch prediction hints
+    bool intersects(const BCircle& other) const noexcept {
+        // Pre-calculate combined radius once
+        const float combined_radius = radius + other.radius;
+        
+        // Early exit: Manhattan distance check (very fast, eliminates ~50% of cases)
+        const float dx_abs = std::abs(other.center.x - center.x);
+        const float dy_abs = std::abs(other.center.y - center.y);
+        
+        // Quick rejection: if Manhattan distance > combined radius * sqrt(2), definitely no intersection
+        if (dx_abs + dy_abs > combined_radius * 1.414213f) {
+            return false;
+        }
+        
+        // Quick acceptance: if both dx and dy are small, definitely intersecting
+        if (dx_abs <= radius && dy_abs <= radius) {
+            return true;
+        }
+        
+        // Precise check only when needed
+        const float distanceSquared = dx_abs * dx_abs + dy_abs * dy_abs;
+        const float combinedRadiusSquared = combined_radius * combined_radius;
+        return distanceSquared <= combinedRadiusSquared;
+    }
+    
+    // Fast overlap distance calculation with early exit
+    inline float overlapDistance(const BCircle& other) const noexcept {
+        const float distanceSquared = distanceSquaredTo(other);
+        const float combined_radius = radius + other.radius;
+        const float combinedRadiusSquared = combined_radius * combined_radius;
+        
+        // Early exit for no overlap
+        if (distanceSquared >= combinedRadiusSquared) {
+            return 0.0f;
+        }
+        
+        // Calculate actual overlap (expensive sqrt only when needed)
+        const float distance = std::sqrt(distanceSquared);
+        return combined_radius - distance;
+    }
+    
+    // Check containment of another circle with optimized early exits
+    inline bool contains(const BCircle& other) const noexcept {
+        // Early exit: can't contain a larger or equal circle
+        if (radius <= other.radius) {
+            return false;
+        }
+
+        const float distanceSquared = distanceSquaredTo(other);
+        const float radius_diff = radius - other.radius;
+        const float containmentThresholdSquared = radius_diff * radius_diff;
+        
+        return distanceSquared <= containmentThresholdSquared;
+    }
+    
+    // Additional utility methods for common operations
+    
+    // Check if circle is completely within screen bounds (fast screen culling)
+    inline bool isOnScreen(u16 screen_width, u16 screen_height) const noexcept {
+        return center.x >= radius && 
+               center.y >= radius && 
+               center.x + radius <= static_cast<float>(screen_width) && 
+               center.y + radius <= static_cast<float>(screen_height);
+    }
+    
+    // Move circle by offset (faster than recreating)
+    inline void moveBy(float dx, float dy) noexcept {
+        center.x += dx;
+        center.y += dy;
+    }
+    
+    // Move circle to new position
+    inline void moveTo(float x, float y) noexcept {
+        center.x = x;
+        center.y = y;
+    }
+    
+    // Scale circle by factor (maintains center)
+    inline void scale(float factor) noexcept {
+        setRadius(radius * factor);
+    }
+    
+    // Get bounding box for this circle (useful for spatial partitioning)
+    inline BBox getBBox() const noexcept {
+        return BBox(center.x - radius, center.y - radius, radius * 2.0f, radius * 2.0f);
+    }
+    
+    // Fast area calculation (π * r²) - returns float for precision
+    inline float getArea() const noexcept {
+        return 3.141592653589793f * radius_squared;
+    }
+    
+    // Check if point is on circle edge (within tolerance)
+    inline bool isOnEdge(const Vec2& point, float tolerance = 1.0f) const noexcept {
+        const float distSquared = distanceSquaredTo(point);
+        const float inner_radius = (radius > tolerance) ? radius - tolerance : 0.0f;
+        const float outer_radius = radius + tolerance;
+        const float inner_radius_sq = inner_radius * inner_radius;
+        const float outer_radius_sq = outer_radius * outer_radius;
+        
+        return distSquared >= inner_radius_sq && distSquared <= outer_radius_sq;
+    }
+    
+    // Get circumference
+    inline float getCircumference() const noexcept {
+        return 2.0f * 3.141592653589793f * radius;
+    }
+    
+    // Check if circle intersects with a rectangle (useful for collision with game objects)
+    inline bool intersects(const BBox& bbox) const noexcept {
+        // Find the closest point on the rectangle to the circle center
+        const float closest_x = std::max(bbox.x, std::min(center.x, bbox.x + bbox.width));
+        const float closest_y = std::max(bbox.y, std::min(center.y, bbox.y + bbox.height));
+        
+        // Calculate distance from circle center to closest point
+        const float dx = center.x - closest_x;
+        const float dy = center.y - closest_y;
+        const float distanceSquared = dx * dx + dy * dy;
+        
+        return distanceSquared <= radius_squared;
+    }
 };
 
 
@@ -281,11 +568,22 @@ struct Polygon {
     float roll = 0.0f;      // 4 bytes (rotation around z-axis - tilting left/right)
     Vec2 center;            // 4 bytes (center point for rotation)
 
+
+    // Cached trigonometric values - computed once, used many times
+    mutable float pitch_sin;
+    mutable float pitch_cos;
+    mutable float yaw_sin;
+    mutable float yaw_cos;
+    mutable float roll_sin;
+    mutable float roll_cos;
+
+
     Polygon() = default;
     
     // Constructor with position - BBox is calculated automatically
     Polygon(const Color<u8>& c, i16 x = 0, i16 y = 0) 
-        : color(c), bbox(x, y, 0, 0), center(x, y) {}
+        : color(c), bbox(static_cast<float>(x), static_cast<float>(y), 0.0f, 0.0f), 
+          center(static_cast<float>(x), static_cast<float>(y)) {}
     
     // Constructor with points - BBox is calculated from points
     Polygon(const Color<u8>& c, const Vec2List& pts) 
@@ -334,7 +632,7 @@ struct Polygon {
                 // Add to rotated as current position
                 points_rotated.add(point);
                 // Add to original as current position rotated in reverse
-                _calculateRotationVariables(pitch, yaw, roll, true);
+                _calculateRotationVariablesReverse(pitch, yaw, roll);
                 Vec2 original_point = _applyRotations(point);
                 points_original.add(original_point);
                 break;
@@ -359,10 +657,6 @@ struct Polygon {
         return center;
     }
     
-    // Get current rotation in radians for roll (backward compatibility with Z-axis rotation)
-    float getRotation() const {
-        return roll;
-    }
     
     // Get current rotations for all axes with descriptive names
     // Pitch: Rotation around X-axis (nodding up/down) - positive pitch tilts front up
@@ -388,6 +682,7 @@ struct Polygon {
     const Vec2List& getPoints() const {
         return points_rotated;
     }
+    
     
     // Recalculate BBox and center from current rotated points
     void updateBBox() {
@@ -415,8 +710,9 @@ struct Polygon {
         pitch = pitch_rad;
         yaw = yaw_rad;
         roll = roll_rad;
+        _calculateRotationVariables(pitch, yaw, roll);
         _updateRotatedPoints();
-        _calculateBBox();
+        _calculateBBox(true);
     }
     
     // Add to current rotation values for all axes (rotates by specified amounts)
@@ -424,8 +720,15 @@ struct Polygon {
         pitch += pitch_delta;
         yaw += yaw_delta;
         roll += roll_delta;
-        _updateRotatedPoints();
-        _calculateBBox();
+        
+        // // Normalize angles to prevent them from growing too large
+        pitch = std::fmod(pitch, TWO_PI);
+        yaw = std::fmod(yaw, TWO_PI);
+        roll = std::fmod(roll, TWO_PI);
+        
+        _calculateRotationVariables(pitch, yaw, roll);
+        // _updateRotatedPoints();
+        // _calculateBBox(true);
     }
     
     // Individual axis convenience methods - simplified and consistent
@@ -438,13 +741,7 @@ struct Polygon {
     void rotateRoll(float angle_radians) { rotate(0.0f, 0.0f, angle_radians); }
 
 protected:
-    // Cached trigonometric values - computed once, used many times
-    float _pitch_sin;
-    float _pitch_cos;
-    float _yaw_sin;
-    float _yaw_cos;
-    float _roll_sin;
-    float _roll_cos;
+
     
     // Cached rotation matrix elements (arranged for potential SIMD optimization)
     float _m00, _m01, _m02;
@@ -466,25 +763,25 @@ protected:
             return;
         }
         
-        i16 current_x = bbox.x, current_y = bbox.y;
+        float current_x = bbox.x;
+        float current_y = bbox.y;
+        float target_x_f = static_cast<float>(target_x);
+        float target_y_f = static_cast<float>(target_y);
 
-        bbox.x = target_x;
-        bbox.y = target_y;
+        bbox.x = target_x_f;
+        bbox.y = target_y_f;
         
         // Calculate offset needed to move polygon to target position
-        i16 offset_x = target_x - current_x;
-        i16 offset_y = target_y - current_y;
+        float offset_x = target_x_f - current_x;
+        float offset_y = target_y_f - current_y;
         
         // Apply offset to all original points
-        for (auto& p : points_original) {
-            p.x += offset_x;
-            p.y += offset_y;
-        }
-        
-        // Apply offset to all rotated points
-        for (auto& p : points_rotated) {
-            p.x += offset_x;
-            p.y += offset_y;
+        for (size_t i = 0; i < points_original.size(); ++i) {
+            points_original[i].x += offset_x;
+            points_original[i].y += offset_y;
+
+            points_rotated[i].x += offset_x;
+            points_rotated[i].y += offset_y;
         }
         
         // Update center as well
@@ -492,14 +789,11 @@ protected:
         center.y += offset_y;
     }
 
-    void _calculateBBox(i16 offset_x = 0, i16 offset_y = 0) {
-        if (points_rotated.empty()) {
-            bbox = BBox(offset_x, offset_y, 0, 0);
-            return;
-        }
-        
-        i16 min_x = INT16_MAX, min_y = INT16_MAX;
-        i16 max_x = INT16_MIN, max_y = INT16_MIN;
+    void _calculateBBox(bool rotating = false) {
+        float min_x = std::numeric_limits<float>::max();
+        float min_y = std::numeric_limits<float>::max();
+        float max_x = std::numeric_limits<float>::lowest();
+        float max_y = std::numeric_limits<float>::lowest();
         
         // Find bounds of all rotated points (these are what's actually rendered)
         for (const auto& p : points_rotated) {
@@ -509,58 +803,89 @@ protected:
             max_y = std::max(max_y, p.y);
         }
         
-        bbox = BBox(min_x, min_y, static_cast<u16>(max_x - min_x), static_cast<u16>(max_y - min_y));
+        // Create float bounding box
+        bbox = BBox(min_x, min_y, max_x - min_x, max_y - min_y);
         
-        center.x = bbox.x + static_cast<i16>(bbox.width / 2);
-        center.y = bbox.y + static_cast<i16>(bbox.height / 2);
+        if (!rotating) {
+            center.x = min_x + (max_x - min_x) * 0.5f;
+            center.y = min_y + (max_y - min_y) * 0.5f;
+        }
     }
- 
-    // Function 1: Calculate all rotation variables once
-    // Sets up trigonometric values and rotation matrix elements
-    void _calculateRotationVariables(float pitch_val, float yaw_val, float roll_val, bool reverse = false) {
-        // Apply reverse multiplier if needed
-        const float multiplier = reverse ? -1.0f : 1.0f;
+
+    void _calculateRotationVariables(float pitch_val, float yaw_val, float roll_val) {
+        size_t pitch_index = angle_to_index(pitch_val);
+        size_t yaw_index = angle_to_index(yaw_val);
+        size_t roll_index = angle_to_index(roll_val);
+        
+        pitch_sin = trig_table[pitch_index].first;
+        pitch_cos = trig_table[pitch_index].second;
+        yaw_sin = trig_table[yaw_index].first;
+        yaw_cos = trig_table[yaw_index].second;
+        roll_sin = trig_table[roll_index].first;
+        roll_cos = trig_table[roll_index].second;
+    }
+
+
+    void _calculateRotationVariablesReverse(float pitch_val, float yaw_val, float roll_val) {
+        // Reverse multiplier for reverse rotation
+        const float multiplier = -1.0f;
         const float effective_pitch = pitch_val * multiplier;
         const float effective_yaw = yaw_val * multiplier;
         const float effective_roll = roll_val * multiplier;
-        
-        // Pre-calculate all trigonometric values once
-        _pitch_cos = std::cos(effective_pitch);
-        _pitch_sin = std::sin(effective_pitch);
-        _yaw_cos = std::cos(effective_yaw);
-        _yaw_sin = std::sin(effective_yaw);
-        _roll_cos = std::cos(effective_roll);
-        _roll_sin = std::sin(effective_roll);
-        
-        // Pre-calculate rotation matrix elements based on rotation order
-        if (reverse) {
-            // Reverse order: Roll -> Yaw -> Pitch (transpose of forward matrix)
-            _m00 = _yaw_cos * _roll_cos;
-            _m01 = _pitch_sin * _yaw_sin * _roll_cos + _pitch_cos * _roll_sin;
-            _m02 = -_pitch_cos * _yaw_sin * _roll_cos + _pitch_sin * _roll_sin;
-            _m10 = -_yaw_cos * _roll_sin;
-            _m11 = -_pitch_sin * _yaw_sin * _roll_sin + _pitch_cos * _roll_cos;
-            _m12 = _pitch_cos * _yaw_sin * _roll_sin + _pitch_sin * _roll_cos;
-            _m20 = _yaw_sin;
-            _m21 = -_pitch_sin * _yaw_cos;
-            _m22 = _pitch_cos * _yaw_cos;
-        } else {
-            // Forward order: Pitch -> Yaw -> Roll
-            _m00 = _yaw_cos * _roll_cos;
-            _m01 = -_yaw_cos * _roll_sin;
-            _m02 = _yaw_sin;
-            _m10 = _pitch_sin * _yaw_sin * _roll_cos + _pitch_cos * _roll_sin;
-            _m11 = -_pitch_sin * _yaw_sin * _roll_sin + _pitch_cos * _roll_cos;
-            _m12 = -_pitch_sin * _yaw_cos;
-            _m20 = -_pitch_cos * _yaw_sin * _roll_cos + _pitch_sin * _roll_sin;
-            _m21 = _pitch_cos * _yaw_sin * _roll_sin + _pitch_sin * _roll_cos;
-            _m22 = _pitch_cos * _yaw_cos;
-        }
-        
-        // Cache center coordinates
-        _center_x = static_cast<float>(center.x);
-        _center_y = static_cast<float>(center.y);
+
+        _calculateRotationVariables(effective_pitch, effective_yaw, effective_roll);
     }
+
+        
+
+        
+
+    // Function 1: Calculate all rotation variables once
+    // Sets up trigonometric values and rotation matrix elements
+    // void _calculateRotationVariables(float pitch_val, float yaw_val, float roll_val, bool reverse = false) {
+    //     // Apply reverse multiplier if needed
+    //     const float multiplier = reverse ? -1.0f : 1.0f;
+    //     const float effective_pitch = pitch_val * multiplier;
+    //     const float effective_yaw = yaw_val * multiplier;
+    //     const float effective_roll = roll_val * multiplier;
+        
+    //     // Pre-calculate all trigonometric values once
+    //     _pitch_cos = std::cos(effective_pitch);
+    //     _pitch_sin = std::sin(effective_pitch);
+    //     _yaw_cos = std::cos(effective_yaw);
+    //     _yaw_sin = std::sin(effective_yaw);
+    //     _roll_cos = std::cos(effective_roll);
+    //     _roll_sin = std::sin(effective_roll);
+        
+    //     // Pre-calculate rotation matrix elements based on rotation order
+    //     if (reverse) {
+    //         // Reverse order: Roll -> Yaw -> Pitch (transpose of forward matrix)
+    //         _m00 = _yaw_cos * _roll_cos;
+    //         _m01 = _pitch_sin * _yaw_sin * _roll_cos + _pitch_cos * _roll_sin;
+    //         _m02 = -_pitch_cos * _yaw_sin * _roll_cos + _pitch_sin * _roll_sin;
+    //         _m10 = -_yaw_cos * _roll_sin;
+    //         _m11 = -_pitch_sin * _yaw_sin * _roll_sin + _pitch_cos * _roll_cos;
+    //         _m12 = _pitch_cos * _yaw_sin * _roll_sin + _pitch_sin * _roll_cos;
+    //         _m20 = _yaw_sin;
+    //         _m21 = -_pitch_sin * _yaw_cos;
+    //         _m22 = _pitch_cos * _yaw_cos;
+    //     } else {
+    //         // Forward order: Pitch -> Yaw -> Roll
+    //         _m00 = _yaw_cos * _roll_cos;
+    //         _m01 = -_yaw_cos * _roll_sin;
+    //         _m02 = _yaw_sin;
+    //         _m10 = _pitch_sin * _yaw_sin * _roll_cos + _pitch_cos * _roll_sin;
+    //         _m11 = -_pitch_sin * _yaw_sin * _roll_sin + _pitch_cos * _roll_cos;
+    //         _m12 = -_pitch_sin * _yaw_cos;
+    //         _m20 = -_pitch_cos * _yaw_sin * _roll_cos + _pitch_sin * _roll_sin;
+    //         _m21 = _pitch_cos * _yaw_sin * _roll_sin + _pitch_sin * _roll_cos;
+    //         _m22 = _pitch_cos * _yaw_cos;
+    //     }
+        
+    //     // Cache center coordinates
+    //     _center_x = center.x;
+    //     _center_y = center.y;
+    // }
     
     // Function 2: Apply pre-calculated rotations to all points
     // Uses the variables set by _calculateRotationVariables
@@ -584,7 +909,7 @@ protected:
             return;
         }
         
-        _calculateRotationVariables(pitch, yaw, roll, false);
+        _calculateRotationVariables(pitch, yaw, roll);
         _applyRotationsToAllPoints();
     }
     
@@ -592,27 +917,25 @@ protected:
     // Apply rotation transformation to a single point (used in addPoint modes)
     inline Vec2 _applyRotations(const Vec2& point) {
         // Apply transformation to single point (optimized for 2D)
-        _x = static_cast<float>(point.x) - _center_x;
-        _y = static_cast<float>(point.y) - _center_y;
+        _x = point.x - _center_x;
+        _y = point.y - _center_y;
         
         // Skip z calculations since z=0 for 2D points
         _rotated_x = _m00 * _x + _m01 * _y; // Removed _m02 * _z 
         _rotated_y = _m10 * _x + _m11 * _y; // Removed _m12 * _z
         
-        return Vec2(
-            static_cast<i16>(_rotated_x + _center_x),
-            static_cast<i16>(_rotated_y + _center_y)
-        );
+        return Vec2(_rotated_x + _center_x, _rotated_y + _center_y);
     }
     
+
 };
 
 // Rectangle class - inherits from Polygon with specific constraints
 struct Rectangle : public Polygon {
-    u16 width, height;  // Rectangle dimensions (always positive)
+    float width, height;  // Rectangle dimensions (always positive, float for sub-pixel precision)
     
     // Constructor with position, dimensions, color, and optional rotation
-    Rectangle(i16 x, i16 y, u16 w, u16 h, const Color<u8>& c, float rotation_radians = 0.0f) 
+    Rectangle(float x, float y, float w, float h, const Color<u8>& c, float rotation_radians = 0.0f) 
         : Polygon(c), width(w), height(h) {
         _createRectanglePoints(x, y, w, h);
         _calculateBBox();
@@ -623,11 +946,15 @@ struct Rectangle : public Polygon {
     }
     
     // Constructor with just dimensions and color (positioned at origin)
-    Rectangle(u16 w, u16 h, const Color<u8>& c, float rotation_radians = 0.0f) 
-        : Rectangle(0, 0, w, h, c, rotation_radians) {}
+    Rectangle(float w, float h, const Color<u8>& c, float rotation_radians = 0.0f) 
+        : Rectangle(0.0f, 0.0f, w, h, c, rotation_radians) {}
+    
+    // Legacy constructor for backward compatibility
+    Rectangle(i16 x, i16 y, u16 w, u16 h, const Color<u8>& c, float rotation_radians = 0.0f) 
+        : Rectangle(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h), c, rotation_radians) {}
     
     // Resize rectangle (maintains position and rotation)
-    void resize(u16 new_width, u16 new_height) {
+    void resize(float new_width, float new_height) {
         if (new_width == width && new_height == height) return;
         
         width = new_width;
@@ -641,7 +968,7 @@ struct Rectangle : public Polygon {
         
         // Recreate rectangle at origin with no rotation
         pitch = yaw = roll = 0.0f;
-        _createRectanglePoints(0, 0, width, height);
+        _createRectanglePoints(0.0f, 0.0f, width, height);
         _calculateBBox();
         
         // Restore rotations
@@ -653,8 +980,8 @@ struct Rectangle : public Polygon {
         }
         
         // Restore position
-        moveTo(current_center.x - static_cast<i16>(width / 2), 
-               current_center.y - static_cast<i16>(height / 2));
+        moveTo(static_cast<i16>(current_center.x) - static_cast<i16>(width / 2), 
+               static_cast<i16>(current_center.y) - static_cast<i16>(height / 2));
     }
     
     // Get rectangle dimensions
@@ -668,17 +995,17 @@ struct Rectangle : public Polygon {
 
 private:
     // Create the 4 corner points of a rectangle
-    void _createRectanglePoints(i16 x, i16 y, u16 w, u16 h) {
+    void _createRectanglePoints(float x, float y, float w, float h) {
         points_original.clear();
         points_original.reserve(4);
         points_rotated.clear();
         points_rotated.reserve(4);
         
-        // Add 4 corners: top-left, top-right, bottom-right, bottom-left
+        // Add 4 corners: top-left, top-right, bottom-right, bottom-left (no conversions needed!)
         points_original.add(x, y);                    // Top-left
-        points_original.add(x + w, y);                // Top-right  
-        points_original.add(x + w, y + h);            // Bottom-right
-        points_original.add(x, y + h);                // Bottom-left
+        points_original.add(x + w, y);               // Top-right  
+        points_original.add(x + w, y + h);          // Bottom-right
+        points_original.add(x, y + h);               // Bottom-left
         
         // Initially, rotated points are the same as original
         points_rotated = points_original;

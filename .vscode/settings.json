@@ -87,5 +87,12 @@
         "iomanip": "cpp"
     },
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/debug/compile_commands.json"
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/debug/compile_commands.json",
+    "C_Cpp.default.cppStandard": "c++23",
+    "C_Cpp.default.intelliSenseMode": "gcc-x64",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "C_Cpp.clang_format_style": "file",
+    "C_Cpp.clang_format_fallbackStyle": "LLVM"
 }
