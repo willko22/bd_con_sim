@@ -161,8 +161,6 @@ int main() {
         //     rect->rotate(pitch_delta, yaw_delta, roll_delta); // Rotate around all axes
         // }
 
-        // Movement is now handled on GPU - no need for CPU-side movePolygon calls!
-        // The GPU calculates: position = initial_position + (velocity * time)
         
         // Render the frame
         render_frame(fps);

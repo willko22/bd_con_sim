@@ -9,6 +9,7 @@ layout (location = 5) in vec2 aVelocity;   // Per-instance velocity (world units
 layout (location = 6) in float aSpawnTime; // Per-instance spawn time (seconds)
 layout (location = 7) in vec2 aFlags;      // Per-instance flags (x=should_rotate, y=move)
 
+
 // Trig table texture and size
 uniform sampler1D uTrigTable;
 uniform float uTrigTableSize;
@@ -17,10 +18,12 @@ uniform float uTrigTableSize;
 uniform float uTime;           // Current time in seconds
 uniform float uRotationSpeed;  // Rotation speed in radians per second
 
+
 // World coordinate system uniforms for GPU-side conversion
 uniform vec2 uScreenSize;     // Screen width and height
 uniform float uWorldScale;    // Scale factor from world to screen coordinates
 uniform vec2 uWorldOffset;    // Offset for centering world in screen
+
 
 out vec4 vertexColor;
 
@@ -46,6 +49,7 @@ void main()
     // aPos goes from (0,0) to (1,1), so center it to (-0.5,-0.5) to (0.5,0.5)
     vec2 centeredPos = aPos - vec2(0.5);
     
+  
     // Calculate current position using initial position + (velocity * elapsed_time)
     // This moves the movement calculation to the GPU based on spawn time!
     // Only apply movement if the move flag is enabled (aFlags.y > 0.5)
@@ -56,7 +60,26 @@ void main()
     
     // Convert world coordinates to screen coordinates
     vec2 screenPos = (currentWorldPos * uWorldScale) + uWorldOffset;
+
+    // Convert screen coordinates to NDC on GPU (NEW OPTIMIZATION)
+    vec2 ndcOffset = (aOffset / uScreenSize) * 2.0 - 1.0;
+    ndcOffset.y = -ndcOffset.y; // Flip Y coordinate
+    vec2 ndcSize = aSize / uScreenSize * 2.0;
     
+    // Scale first using NDC size
+    vec2 scaledPos = centeredPos * ndcSize;
+    
+    // Calculate current angles based on initial angles + (rotation_speed * time)
+    // This moves the angle increment calculation to the GPU!
+    float currentPitch = aAngles.x + (uRotationSpeed * uTime);
+    float currentYaw = aAngles.y + (uRotationSpeed * uTime);
+    float currentRoll = aAngles.z + (uRotationSpeed * uTime);
+    
+    // Look up trigonometric values from GPU table using current angles
+    vec2 pitchTrig = lookupTrig(currentPitch);  // pitch (X-axis rotation)
+    vec2 yawTrig = lookupTrig(currentYaw);      // yaw   (Y-axis rotation)  
+    vec2 rollTrig = lookupTrig(currentRoll);    // roll  (Z-axis rotation)
+
     // Convert screen coordinates to NDC on GPU 
     vec2 ndcOffset = (screenPos / uScreenSize) * 2.0 - 1.0;
     ndcOffset.y = -ndcOffset.y; // Flip Y coordinate for screen space
@@ -106,6 +129,7 @@ void main()
     
     // Translate to final position using NDC offset
     gl_Position = vec4(ndcOffset + finalPos, 0.0, 1.0);
+
     vertexColor = aColor;
 }
 )";

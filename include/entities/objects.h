@@ -596,6 +596,7 @@ struct Polygon {
     // Spawn time for GPU-side time-based calculations (NEW)
     float spawn_time = 0.0f;     // 4 bytes - time when rectangle was spawned (in seconds)
 
+
     Vec2 move_offset; // 8 bytes (offset for moving polygons, if needed)
 
     // Cached trigonometric values - computed once, used many times

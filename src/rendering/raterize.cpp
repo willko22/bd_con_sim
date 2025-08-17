@@ -106,6 +106,7 @@ static GLint uScreenSizeLoc = -1;  // NEW: for GPU-side NDC conversion
 static GLint uWorldScaleLoc = -1;  // NEW: for GPU-side world coordinate conversion
 static GLint uWorldOffsetLoc = -1; // NEW: for GPU-side world coordinate conversion
 
+
 // Cached window dimensions for performance
 static int cached_width = 800;
 static int cached_height = 600;
@@ -243,6 +244,7 @@ bool rasterize_init() {
     uScreenSizeLoc = glGetUniformLocation(shaderProgram, "uScreenSize");  // NEW
     uWorldScaleLoc = glGetUniformLocation(shaderProgram, "uWorldScale");  // NEW
     uWorldOffsetLoc = glGetUniformLocation(shaderProgram, "uWorldOffset"); // NEW
+
     
     std::cout << "Rasterizer initialized successfully" << std::endl;
     return true;
@@ -374,6 +376,7 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         glEnableVertexAttribArray(4);
         glVertexAttribDivisor(4, 1);
         
+
         // Velocity (location 5) - 2 components for velocity X and Y in world units per second
         glVertexAttribPointer(5, 2, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(11 * sizeof(float)));
         glEnableVertexAttribArray(5);
@@ -388,7 +391,7 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         glVertexAttribPointer(7, 2, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(14 * sizeof(float)));
         glEnableVertexAttribArray(7);
         glVertexAttribDivisor(7, 1);
-        
+
         // Persistent OpenGL state setup for better performance (NEW OPTIMIZATION)
         glUseProgram(shaderProgram);
         glActiveTexture(GL_TEXTURE0);
@@ -401,12 +404,14 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     
     // Prepare instance data - use static vector to avoid allocations (OPTIMIZED)
     static std::vector<float> instance_data;
+
     instance_data.resize(rectangles.size() * _buffer_size); // 16 floats per instance now (added flags)
     
     size_t data_index = 0;
     for (const auto* rect : rectangles) {
         if (!rect || !rect->should_render) continue;
         // Send world coordinates to GPU (GPU will convert to screen coordinates)
+
         float x = rect->center.x;
         float y = rect->center.y;
         float w = rect->width;
@@ -415,6 +420,7 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         // Convert color to float [0,1]
         Color<float> glColor = rect->color.toGL();
         
+
         // Get velocity from the rectangle's move_offset (which contains velocity * speed)
         float velocity_x = rect->move_offset.x;
         float velocity_y = rect->move_offset.y;
@@ -436,6 +442,7 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         instance_data[data_index++] = rect->spawn_time;     // Spawn time (seconds)
         instance_data[data_index++] = rect->should_rotate ? 1.0f : 0.0f; // Should rotate flag
         instance_data[data_index++] = rect->move ? 1.0f : 0.0f;          // Move flag
+
     }
     
     if (instance_data.empty()) return;
@@ -452,10 +459,12 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     glUniform1f(uTrigTableSizeLoc, trigTableSize);
     glUniform2f(uScreenSizeLoc, static_cast<float>(cached_width), static_cast<float>(cached_height)); // NEW
     
+
     // NEW: Pass world coordinate system parameters to GPU
     glUniform1f(uWorldScaleLoc, world_scale);
     glUniform2f(uWorldOffsetLoc, world_offset_x, world_offset_y);
     
+
     // NEW: Pass time and rotation speed to GPU for angle calculation
     glUniform1f(uTimeLoc, static_cast<float>(glfwGetTime()));
     glUniform1f(uRotationSpeedLoc, rotation_speed);

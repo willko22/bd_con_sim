@@ -138,7 +138,7 @@ std::vector<std::unique_ptr<objects::Rectangle>> spawn_rectangles(float screen_x
 
         // Store rectangle at the CLICK position as initial position (world coordinates)
         // The rectangle will start at the click point and then move with velocity
-        
+
         // Adjust position so rectangle center is at the click point
         float initial_world_x = world_x - world_width_rect / 2.0f;
         float initial_world_y = world_y - world_height_rect / 2.0f;
@@ -151,16 +151,19 @@ std::vector<std::unique_ptr<objects::Rectangle>> spawn_rectangles(float screen_x
         
         // Set spawn time for GPU-side time-based calculations
         rect->spawn_time = static_cast<float>(glfwGetTime());
+
         
         // Set random initial angles for GPU-side rotation calculation
         rect->initial_pitch = 2.0f * M_PI * (static_cast<float>(rand()) / RAND_MAX);
         rect->initial_yaw = 2.0f * M_PI * (static_cast<float>(rand()) / RAND_MAX);
         rect->initial_roll = 2.0f * M_PI * (static_cast<float>(rand()) / RAND_MAX);
         
+
         // Set initial velocity based on world coordinates (velocity is in world units)
         rect->setVelocity(velocity_x, velocity_y);
         rect->move = true; // Enable movement for physics simulation
         rect->setSpeed(rectangle_speed); // Set default speed for movement (world units per second)
+
 
         // Add to vector
         new_rectangles.push_back(std::move(rect));
