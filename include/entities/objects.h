@@ -585,8 +585,6 @@ struct Polygon {
     bool should_rotate = true; // 1 byte (indicates if polygon can rotate, used to disable rotation)
     bool should_render = true; // 1 byte (indicates if polygon should be rendered, used for visibility)
     
-    Vec2 velocity; // 8 bytes (velocity vector for physics, if needed)
-    float speed = 0.0f; // 4 bytes (speed of the polygon, if needed)
 
     // Initial angles for GPU-side rotation calculation (NEW)
     float initial_pitch = 0.0f;  // 4 bytes - base rotation angles
@@ -595,8 +593,13 @@ struct Polygon {
 
     // Spawn time for GPU-side time-based calculations (NEW)
     float spawn_time = 0.0f;     // 4 bytes - time when rectangle was spawned (in seconds)
+    
+    
+    float speed = 0.0f; // 4 bytes (speed of the polygon, if needed)
+    float decay_rate = 0.0f; // 4 bytes - decay rate for time-based effects (e.g., fading out)
+    Vec2 velocity; // 8 bytes (velocity vector for physics, if needed)
+    Vec2 direction; // 4 bytes (speed of the polygon, if needed)
 
-    Vec2 move_offset; // 8 bytes (offset for moving polygons, if needed)
 
     // Cached trigonometric values - computed once, used many times
     mutable float pitch_sin;
@@ -628,55 +631,50 @@ struct Polygon {
     }
 
 
-    void setVelocity(float vx, float vy) {
-        velocity.x = vx;
-        velocity.y = vy;
+    void setDirection(float vx, float vy) {
+        direction.x = vx;
+        direction.y = vy;
 
-        velocity.normalize(); // Normalize velocity to unit vector
-
-        move_offset = velocity * speed; // Set move offset to velocity for movement
+        direction.normalize(); // Normalize velocity to unit vector
+        velocity = direction * speed; 
     }
 
-    void setVelocity(const Vec2& v) {
-        velocity = v;
+    void setDirection(const Vec2& v) {
+        direction = v;
 
-        velocity.normalize(); // Normalize velocity to unit vector
-
-        move_offset = velocity * speed; // Set move offset to velocity for movement
+        direction.normalize(); // Normalize velocity to unit vector
+        velocity = direction * speed; 
     }
 
-    void adjustVelocity(float vx, float vy) {
-        velocity.x += vx;
-        velocity.y += vy;
+    void adjustDirection(float vx, float vy) {
+        direction.x += vx;
+        direction.y += vy;
 
-        velocity.normalize(); // Normalize velocity to unit vector
-
-        move_offset = velocity * speed; // Adjust move offset based on new velocity
+        direction.normalize(); // Normalize velocity to unit vector
+        velocity = direction * speed; 
     }
 
-    void adjustVelocity(const Vec2& v) {
-        velocity += v;
+    void adjustDirection(const Vec2& v) {
+        direction += v;
         
-        velocity.normalize(); // Normalize velocity to unit vector
-
-        move_offset = velocity * speed; // Adjust move offset based on new velocity
+        direction.normalize(); // Normalize velocity to unit vector
+        velocity = direction * speed; 
     }
 
     void setSpeed(float new_speed) {
         speed = new_speed;
-        move_offset = velocity * speed; // Update move offset based on new speed
+        velocity = direction * speed; // Update velocity based on direction and speed
     }
 
     void adjustSpeed(float delta_speed) {
         speed += delta_speed;
-        move_offset = velocity * speed; // Update move offset based on new speed
+        velocity = direction * speed; // Update velocity based on direction and speed
     }
 
     void movePolygon(float dt) {
         if (move) {
             // Update position based on velocity and time delta
-            center.x += move_offset.x * dt;
-            center.y += move_offset.y * dt;
+            center += velocity * dt;
             // Update bounding box and points based on new center
             // _apply_move_offset_to_points(dt);
         }
@@ -880,12 +878,11 @@ protected:
 
 
     void _apply_move_offset_to_points(float dt) {
-        // Move all points based on velocity and time delta
-        float velocity_x = move_offset.x * dt;
-        float velocity_y = move_offset.y * dt;
+        float offset_x = velocity.x * dt;
+        float offset_y = velocity.y * dt;
         for (auto& p : points_rotated) {
-            p.x += velocity_x;
-            p.y += velocity_y;
+            p.x += offset_x;
+            p.y += offset_y;
         }
 
     }

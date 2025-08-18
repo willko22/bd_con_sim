@@ -105,6 +105,7 @@ static GLint uRotationSpeedLoc = -1;
 static GLint uScreenSizeLoc = -1;  // NEW: for GPU-side NDC conversion
 static GLint uWorldScaleLoc = -1;  // NEW: for GPU-side world coordinate conversion
 static GLint uWorldOffsetLoc = -1; // NEW: for GPU-side world coordinate conversion
+static GLint uVelocityChange = -1; // NEW: for GPU-side velocity change
 
 // Cached window dimensions for performance
 static int cached_width = 800;
@@ -243,6 +244,7 @@ bool rasterize_init() {
     uScreenSizeLoc = glGetUniformLocation(shaderProgram, "uScreenSize");  // NEW
     uWorldScaleLoc = glGetUniformLocation(shaderProgram, "uWorldScale");  // NEW
     uWorldOffsetLoc = glGetUniformLocation(shaderProgram, "uWorldOffset"); // NEW
+    uVelocityChange = glGetUniformLocation(shaderProgram, "uVelocityChange"); // NEW
     
     std::cout << "Rasterizer initialized successfully" << std::endl;
     return true;
@@ -416,8 +418,6 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         Color<float> glColor = rect->color.toGL();
         
         // Get velocity from the rectangle's move_offset (which contains velocity * speed)
-        float velocity_x = rect->move_offset.x;
-        float velocity_y = rect->move_offset.y;
         
         // Direct array access instead of insert() for better performance
         instance_data[data_index++] = x;                    // Initial world position X
@@ -431,8 +431,8 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         instance_data[data_index++] = rect->initial_pitch;  // Initial pitch angle
         instance_data[data_index++] = rect->initial_yaw;    // Initial yaw angle
         instance_data[data_index++] = rect->initial_roll;   // Initial roll angle
-        instance_data[data_index++] = velocity_x;           // Velocity X (world units per second)
-        instance_data[data_index++] = velocity_y;           // Velocity Y (world units per second)
+        instance_data[data_index++] = rect->velocity.x;          // Velocity X (world units per second)
+        instance_data[data_index++] = rect->velocity.y;           // Velocity Y (world units per second)
         instance_data[data_index++] = rect->spawn_time;     // Spawn time (seconds)
         instance_data[data_index++] = rect->should_rotate ? 1.0f : 0.0f; // Should rotate flag
         instance_data[data_index++] = rect->move ? 1.0f : 0.0f;          // Move flag
@@ -455,10 +455,12 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     // NEW: Pass world coordinate system parameters to GPU
     glUniform1f(uWorldScaleLoc, world_scale);
     glUniform2f(uWorldOffsetLoc, world_offset_x, world_offset_y);
+
+    glUniform1f(uVelocityChange, GRAVITY);
     
     // NEW: Pass time and rotation speed to GPU for angle calculation
     glUniform1f(uTimeLoc, static_cast<float>(glfwGetTime()));
-    glUniform1f(uRotationSpeedLoc, rotation_speed);
+    glUniform1f(uRotationSpeedLoc, ROTATION_SPEED);
     
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, rectangles.size()); // 6 vertices per rectangle, N instances
     

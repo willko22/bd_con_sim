@@ -17,6 +17,8 @@ uniform float uTrigTableSize;
 uniform float uTime;           // Current time in seconds
 uniform float uRotationSpeed;  // Rotation speed in radians per second
 
+uniform float uVelocityChange; // Gravity or other velocity change factor
+
 // World coordinate system uniforms for GPU-side conversion
 uniform vec2 uScreenSize;     // Screen width and height
 uniform float uWorldScale;    // Scale factor from world to screen coordinates
@@ -40,7 +42,7 @@ vec2 lookupTrig(float angle) {
 void main()
 {
     // Calculate elapsed time since spawn for this specific rectangle
-    float elapsedTime = uTime - aSpawnTime;
+    float dt = uTime - aSpawnTime;
     
     // Center the base vertex position around (0,0) before rotation
     // aPos goes from (0,0) to (1,1), so center it to (-0.5,-0.5) to (0.5,0.5)
@@ -50,9 +52,10 @@ void main()
     // This moves the movement calculation to the GPU based on spawn time!
     // Only apply movement if the move flag is enabled (aFlags.y > 0.5)
     vec2 currentWorldPos = aOffset;
-    if (aFlags.y > 0.5) {
-        currentWorldPos += (aVelocity * elapsedTime);
-    }
+    // if (aFlags.y > 0.5) {
+    //     vec2 aVelocity = aVelocity + vec2(0.0f, uVelocityChange * dt); // Apply velocity change factor (e.g., gravity)
+    //     currentWorldPos += aVelocity * dt;
+    // }
     
     // Convert world coordinates to screen coordinates
     vec2 screenPos = (currentWorldPos * uWorldScale) + uWorldOffset;
@@ -73,9 +76,9 @@ void main()
     if (aFlags.x > 0.5) {
         // Calculate current angles based on initial angles + (rotation_speed * elapsed_time)
         // This moves the angle increment calculation to the GPU based on spawn time!
-        float currentPitch = aAngles.x + (uRotationSpeed * elapsedTime);
-        float currentYaw = aAngles.y + (uRotationSpeed * elapsedTime);
-        float currentRoll = aAngles.z + (uRotationSpeed * elapsedTime);
+        float currentPitch = aAngles.x + (uRotationSpeed * dt);
+        float currentYaw = aAngles.y + (uRotationSpeed * dt);
+        float currentRoll = aAngles.z + (uRotationSpeed * dt);
         
         // Look up trigonometric values from GPU table using current angles
         vec2 pitchTrig = lookupTrig(currentPitch);  // pitch (X-axis rotation)

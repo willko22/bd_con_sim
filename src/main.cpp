@@ -111,16 +111,6 @@ int main() {
     int frame_count = 0;
     float fps = 0.0f;
 
-    // // Move new rectangles to the global vector and add pointers to render order
-    // for (auto& rect : new_rectangles) {
-    //     objects::Rectangle* rect_ptr = rect.get();
-    //     rectangles.push_back(std::move(rect));
-    //     render_order[0].push_back(rect_ptr); // Add to render order for key 0
-    // }
-
-
-    // Initialize world background rectangle
-    initialize_world_background();
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {
@@ -136,11 +126,11 @@ int main() {
         handle_mouse_hold_continuous();
         
         // Remove rectangles that are completely outside world bounds (performance optimization)
-        static double last_bounds_check = 0.0;
-        if (current_time - last_bounds_check > 0.5) { // Check bounds every 0.5 seconds
-            remove_out_of_bounds_rectangles();
-            last_bounds_check = current_time;
-        }
+        // static double last_bounds_check = 0.0;
+        // if (current_time - last_bounds_check > 0.5) { // Check bounds every 0.5 seconds
+        //     remove_out_of_bounds_rectangles();
+        //     last_bounds_check = current_time;
+        // }
         
         frame_count++;
         double fps_delta = current_time - last_time; // Time since last FPS update
@@ -155,14 +145,23 @@ int main() {
         // This eliminates the bottleneck of updating thousands of rectangles on CPU
         
         // Note: rotation_speed is passed to GPU via uniform in instanced_draw_rectangles()
-        
-        // OLD CPU-SIDE ANGLE UPDATES (REMOVED):
-        // for (auto& rect : rectangles) {
-        //     rect->rotate(pitch_delta, yaw_delta, roll_delta); // Rotate around all axes
-        // }
+        // std::cout << rectangles[0]->move_offset.x << ", " << rectangles[0]->move_offset.y << std::endl;
+        for (auto& rect : rectangles) {
+            float age = current_time - rect->spawn_time;
 
-        // Movement is now handled on GPU - no need for CPU-side movePolygon calls!
-        // The GPU calculates: position = initial_position + (velocity * time)
+            rect->adjustDirection(0.001f * copysign(-1.0f, rect->direction.x), GRAVITY * frame_delta); // Apply gravity effect
+            rect->setSpeed(RECTANGLE_SPEED + (SPAWN_SPEED - RECTANGLE_SPEED) * exp(rect->decay_rate * -age));
+
+            // optional flutter
+            // rect->velocity.x += sin(age * flutterSpeed + rect->randPhase) 
+            //                     * flutterStrength * frame_delta;
+            if (rect->center.y + rect->velocity.y * frame_delta > world_height) {
+                rect->center.y = rect->bbox.radius;
+                continue;
+            }
+            rect->movePolygon(frame_delta);
+        }
+
         
         // Render the frame
         render_frame(fps);

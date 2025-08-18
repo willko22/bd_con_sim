@@ -49,7 +49,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
             for (auto& rect : new_rectangles) {
                 objects::Rectangle* rect_ptr = rect.get();
                 rectangles.push_back(std::move(rect));
-                render_order[1].push_back(rect_ptr); // Add to layer 1 (rectangle layer)
+                render_order[layer_rectangles].push_back(rect_ptr); // Add to layer 1 (rectangle layer)
                 // Note: rectangle_count is already incremented in spawn_rectangles
             }
             break;

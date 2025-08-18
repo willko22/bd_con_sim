@@ -91,8 +91,8 @@ std::pair<bool, GLFWwindow*> window_init(){
 }
 
 void render_frame(float& fps) {
-    // Clear the screen with black background when world is centered
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    // Clear the screen with background color (dark blue-gray)
+    glClearColor(0.0f / 255.0f, 100.0f / 255.0f, 120.0f / 255.0f, 1.0f); // Same color as old background rectangle
     glClear(GL_COLOR_BUFFER_BIT);
     
     // INSTANCED RENDERING OPTIMIZATION: Draw all rectangles with maximum efficiency
