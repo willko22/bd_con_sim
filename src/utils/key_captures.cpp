@@ -43,15 +43,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
             std::cout << "Left mouse button PRESSED at (" << mouse_current_x << ", " << mouse_current_y << ")" << std::endl;
             
             // Immediate click behavior - use already tracked mouse position
-            auto new_rectangles = spawn_rectangles(mouse_current_x, mouse_current_y, true);
-            
-            // Move new rectangles to the global vector and add pointers to render order (layer 1)
-            for (auto& rect : new_rectangles) {
-                objects::Rectangle* rect_ptr = rect.get();
-                rectangles.push_back(std::move(rect));
-                render_order[layer_rectangles].push_back(rect_ptr); // Add to layer 1 (rectangle layer)
-                // Note: rectangle_count is already incremented in spawn_rectangles
-            }
+            spawn_rectangles(mouse_current_x, mouse_current_y, true);
             break;
         }
             

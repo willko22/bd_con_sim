@@ -313,7 +313,7 @@ void end_batch_render() {
     glBindVertexArray(0);
 }
 
-int _buffer_size = 16; // Updated: position(2) + size(2) + color(4) + angles(3) + velocity(2) + spawn_time(1) + flags(2) = 16 floats per instance
+int _buffer_size = 17; // Updated: position(2) + size(2) + color(4) + angles(3) + velocity(2) + spawn_time(1) + flags(2) = 16 floats per instance
 void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles) {
     if (rectangles.empty()) return;
 
@@ -385,11 +385,16 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(13 * sizeof(float)));
         glEnableVertexAttribArray(6);
         glVertexAttribDivisor(6, 1);
-        
-        // Flags (location 7) - 2 components for should_rotate and move flags
-        glVertexAttribPointer(7, 2, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(14 * sizeof(float)));
+
+        // Spawn time (location 6) - 1 component for spawn time in seconds
+        glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(14 * sizeof(float)));
         glEnableVertexAttribArray(7);
         glVertexAttribDivisor(7, 1);
+        
+        // Flags (location 7) - 2 components for should_rotate and move flags
+        glVertexAttribPointer(8, 2, GL_FLOAT, GL_FALSE, _buffer_size * sizeof(float), (void*)(15 * sizeof(float)));
+        glEnableVertexAttribArray(8);
+        glVertexAttribDivisor(8, 1);
         
         // Persistent OpenGL state setup for better performance (NEW OPTIMIZATION)
         glUseProgram(shaderProgram);
@@ -409,8 +414,8 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     for (const auto* rect : rectangles) {
         if (!rect || !rect->should_render) continue;
         // Send world coordinates to GPU (GPU will convert to screen coordinates)
-        float x = rect->center.x;
-        float y = rect->center.y;
+        float x = rect->bbox.center.x;
+        float y = rect->bbox.center.y;
         float w = rect->width;
         float h = rect->height;
         
@@ -434,6 +439,7 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
         instance_data[data_index++] = rect->velocity.x;          // Velocity X (world units per second)
         instance_data[data_index++] = rect->velocity.y;           // Velocity Y (world units per second)
         instance_data[data_index++] = rect->spawn_time;     // Spawn time (seconds)
+        instance_data[data_index++] = rect->stop_time;     // Spawn time (seconds)
         instance_data[data_index++] = rect->should_rotate ? 1.0f : 0.0f; // Should rotate flag
         instance_data[data_index++] = rect->move ? 1.0f : 0.0f;          // Move flag
     }
@@ -492,8 +498,8 @@ void draw_center_dots(const std::vector<objects::Rectangle*>& rectangles) {
         if (!rect) continue;
         
         // Convert to normalized device coordinates
-        float x = (rect->center.x / cached_width) * 2.0f - 1.0f;
-        float y = 1.0f - (rect->center.y / cached_height) * 2.0f;
+        float x = (rect->bbox.center.x / cached_width) * 2.0f - 1.0f;
+        float y = 1.0f - (rect->bbox.center.y / cached_height) * 2.0f;
         
         // Add vertex data: position + bright red color
         dot_vertices.insert(dot_vertices.end(), {

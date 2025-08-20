@@ -43,6 +43,13 @@ extern const float ROTATION_SPEED;    // Rotation speed in radians per second
 extern const float RECTANGLE_SPEED; // Movement speed in world units per second
 extern const float SPAWN_SPEED; // Speed of spawning rectangles
 extern const float DECAY_RATE;
+extern const float FLUTTER_STRENGHT; // Adjust flutter strength
+extern const float FLUTTER_SPEED; // Speed of flutter effect
+
+
+extern const float BG_COLOR_R; // Background color components
+extern const float BG_COLOR_G;
+extern const float BG_COLOR_B;
 
 
 // ########## RANDOM NUMBER GENERATION ##########
@@ -72,6 +79,8 @@ extern float world_offset_y; // Y offset for screen positioning
 // Rectangle storage and rendering
 extern std::vector<std::vector<objects::Rectangle*>> render_order;
 extern std::vector<std::unique_ptr<objects::Rectangle>> rectangles;
+extern std::vector<objects::Rectangle*> activeRects;
+extern std::vector<objects::Rectangle*> settledRects;
 extern int rectangle_count;
 extern std::unique_ptr<objects::Rectangle> world_background;
 
@@ -101,7 +110,7 @@ extern std::vector<Mat2> mat_table;
 // ========== Entity Creation ==========
 
 // Spawn rectangles at specified position
-std::vector<std::unique_ptr<objects::Rectangle>> spawn_rectangles(float x, float y, bool randomize);
+void spawn_rectangles(float x, float y, bool randomize);
 
 // ========== Input Processing ==========
 

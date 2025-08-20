@@ -110,6 +110,7 @@ int main() {
     double last_frame_time = last_time; // Track time for frame delta
     int frame_count = 0;
     float fps = 0.0f;
+    std::vector<size_t> to_remove;
 
 
     // Main loop
@@ -144,24 +145,46 @@ int main() {
         // The GPU calculates current angles as: initial_angle + (rotation_speed * time)
         // This eliminates the bottleneck of updating thousands of rectangles on CPU
         
-        // Note: rotation_speed is passed to GPU via uniform in instanced_draw_rectangles()
-        // std::cout << rectangles[0]->move_offset.x << ", " << rectangles[0]->move_offset.y << std::endl;
-        for (auto& rect : rectangles) {
-            float age = current_time - rect->spawn_time;
+        float age = 0.0f;
+        objects::BCircle bbox = {};
+        for (size_t i = 0; i < activeRects.size(); ++i) {
+            auto* rect = activeRects[i];
+            if (!rect->move) continue; // Skip if rectangle is not moving
+            age = current_time - rect->spawn_time;
 
-            rect->adjustDirection(0.001f * copysign(-1.0f, rect->direction.x), GRAVITY * frame_delta); // Apply gravity effect
+            rect->adjustDirection(sin(age * FLUTTER_SPEED + rect->randPhase) 
+                                * FLUTTER_STRENGHT * frame_delta, GRAVITY * frame_delta); // Apply gravity effect
             rect->setSpeed(RECTANGLE_SPEED + (SPAWN_SPEED - RECTANGLE_SPEED) * exp(rect->decay_rate * -age));
 
-            // optional flutter
-            // rect->velocity.x += sin(age * flutterSpeed + rect->randPhase) 
-            //                     * flutterStrength * frame_delta;
-            if (rect->center.y + rect->velocity.y * frame_delta > world_height) {
-                rect->center.y = rect->bbox.radius;
-                continue;
-            }
             rect->movePolygon(frame_delta);
+
+            bbox = rect->bbox; // returns min/max x/y (implement if not existing)
+            if (bbox.center.y + bbox.radius > world_height) 
+            {
+                // Option 1: stop movement
+                rect->setSpeed(0.0f);
+
+                // Option 2: clamp position to boundary
+                rect->bbox.center.y = std::clamp(bbox.center.y, bbox.radius, world_height - bbox.radius);
+
+                // Option 3: mark as "dead" for removal
+                rect->stop_time = current_time; // Set stop time for GPU-side calculations
+                rect->move = false;
+                
+                to_remove.push_back(i);
+                // rect->should_rotate = false; // Disable rotation to stop GPU updates
+                
+            }
         }
 
+        for (int j = static_cast<int>(to_remove.size()) - 1; j >= 0; --j) {
+            size_t idx = to_remove[j];
+            auto* rect = activeRects[idx];
+
+            settledRects.push_back(rect);
+            activeRects.erase(activeRects.begin() + idx);
+        }
+        to_remove.clear();
         
         // Render the frame
         render_frame(fps);

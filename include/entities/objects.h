@@ -579,12 +579,12 @@ struct Polygon {
     float pitch = 0.0f;     // 4 bytes (rotation around x-axis - nodding up/down)
     float yaw = 0.0f;       // 4 bytes (rotation around y-axis - turning left/right)
     float roll = 0.0f;      // 4 bytes (rotation around z-axis - tilting left/right)
-    Vec2 center;            // 4 bytes (center point for rotation)
     
     bool move = false; // 1 byte (indicates if polygon is moving, used for physics)
-    bool should_rotate = true; // 1 byte (indicates if polygon can rotate, used to disable rotation)
+    bool should_rotate = false; // 1 byte (indicates if polygon can rotate, used to disable rotation)
     bool should_render = true; // 1 byte (indicates if polygon should be rendered, used for visibility)
     
+    float randPhase = 0.0f; // 4 bytes (random phase for flutter effect, if needed)
 
     // Initial angles for GPU-side rotation calculation (NEW)
     float initial_pitch = 0.0f;  // 4 bytes - base rotation angles
@@ -593,7 +593,7 @@ struct Polygon {
 
     // Spawn time for GPU-side time-based calculations (NEW)
     float spawn_time = 0.0f;     // 4 bytes - time when rectangle was spawned (in seconds)
-    
+    float stop_time = 0.0f;      // 4 bytes - time when rectangle was stopped (in seconds)
     
     float speed = 0.0f; // 4 bytes (speed of the polygon, if needed)
     float decay_rate = 0.0f; // 4 bytes - decay rate for time-based effects (e.g., fading out)
@@ -614,8 +614,7 @@ struct Polygon {
     
     // Constructor with position - BCircle is calculated automatically
     Polygon(const Color<u8>& c, i16 x = 0, i16 y = 0) 
-        : color(c), bbox(Vec2(static_cast<float>(x), static_cast<float>(y)), 0.0f), 
-          center(static_cast<float>(x), static_cast<float>(y)) {}
+        : color(c), bbox(Vec2(static_cast<float>(x), static_cast<float>(y)), 0.0f) {}
     
     // Constructor with points - BCircle is calculated from points
     Polygon(const Color<u8>& c, const Vec2List& pts) 
@@ -674,7 +673,7 @@ struct Polygon {
     void movePolygon(float dt) {
         if (move) {
             // Update position based on velocity and time delta
-            center += velocity * dt;
+            bbox.center += velocity * dt;
             // Update bounding box and points based on new center
             // _apply_move_offset_to_points(dt);
         }
@@ -737,7 +736,7 @@ struct Polygon {
     
     // Get the center point
     const Vec2& getCenter() const {
-        return center;
+        return bbox.center;
     }
     
     
@@ -870,8 +869,6 @@ protected:
         }
         
         // Update center and bounding circle center
-        center.x += offset_x;
-        center.y += offset_y;
         bbox.center.x = target_x_f;
         bbox.center.y = target_y_f;
     }
@@ -889,7 +886,7 @@ protected:
 
     void _calculateBBox(bool rotating = false) {
         if (points_rotated.empty()) {
-            bbox = BCircle(center, 0.0f);
+            bbox.radius = 0.0f;
             return;
         }
         
@@ -908,21 +905,21 @@ protected:
         
         // Calculate center of bounding area
         if (!rotating) {
-            center.x = min_x + (max_x - min_x) * 0.5f;
-            center.y = min_y + (max_y - min_y) * 0.5f;
+            bbox.center.x = min_x + (max_x - min_x) * 0.5f;
+            bbox.center.y = min_y + (max_y - min_y) * 0.5f;
         }
         
         // Calculate radius as the maximum distance from center to any point
         float max_distance_squared = 0.0f;
         for (const auto& p : points_rotated) {
-            float dx = p.x - center.x;
-            float dy = p.y - center.y;
+            float dx = p.x - bbox.center.x;
+            float dy = p.y - bbox.center.y;
             float distance_squared = dx * dx + dy * dy;
             max_distance_squared = std::max(max_distance_squared, distance_squared);
         }
         
         // Create bounding circle
-        bbox = BCircle(center, std::sqrt(max_distance_squared));
+        bbox.radius = std::sqrt(max_distance_squared);
     }
 
     void _calculateRotationVariables(float pitch_val, float yaw_val, float roll_val) {
@@ -1079,7 +1076,7 @@ struct Rectangle : public Polygon {
         height = new_height;
         
         // Save current state
-        Vec2 current_center = center;
+        Vec2 current_center = bbox.center;
         float current_pitch = pitch;
         float current_yaw = yaw;
         float current_roll = roll;

@@ -7,7 +7,8 @@ layout (location = 3) in vec4 aColor;      // Per-instance color (RGBA)
 layout (location = 4) in vec3 aAngles;     // Per-instance INITIAL rotation angles (pitch, yaw, roll in radians)
 layout (location = 5) in vec2 aVelocity;   // Per-instance velocity (world units per second)
 layout (location = 6) in float aSpawnTime; // Per-instance spawn time (seconds)
-layout (location = 7) in vec2 aFlags;      // Per-instance flags (x=should_rotate, y=move)
+layout (location = 7) in float aStopTime; // Per-instance spawn time (seconds)
+layout (location = 8) in vec2 aFlags;      // Per-instance flags (x=should_rotate, y=move)
 
 // Trig table texture and size
 uniform sampler1D uTrigTable;
@@ -42,8 +43,14 @@ vec2 lookupTrig(float angle) {
 void main()
 {
     // Calculate elapsed time since spawn for this specific rectangle
-    float dt = uTime - aSpawnTime;
-    
+    float dt = 0.0;
+    if (aStopTime > 0.0) {
+        dt = aStopTime - aSpawnTime; // Time since spawn until stop
+    } else {
+        // If not stopped, use current time
+        dt = uTime - aSpawnTime; // Time since spawn
+    }
+
     // Center the base vertex position around (0,0) before rotation
     // aPos goes from (0,0) to (1,1), so center it to (-0.5,-0.5) to (0.5,0.5)
     vec2 centeredPos = aPos - vec2(0.5);

@@ -14,10 +14,17 @@
 const float GRAVITY = 2.5f; // Speed of changing velocity vector to downward direction
 const float ROTATION_SPEED = 1.0f;    // Rotation speed in radians per second
 const float RECTANGLE_SPEED = 30.0f; // Movement speed in world units per second
-const float SPAWN_SPEED = 350.0f; // Speed of spawning rectangles
-const float DECAY_RATE = 4.0f;
+const float SPAWN_SPEED = 500.0f; // Speed of spawning rectangles
+const float DECAY_RATE = 6.0f;
+const float FLUTTER_STRENGHT = 0.5f; // Adjust flutter strength
+const float FLUTTER_SPEED = 1.0f;
+
 
 const float MOUSE_RADIUS = 6.0f; // Radius for mouse interaction
+
+const float BG_COLOR_R = 210.0f; // Background color components
+const float BG_COLOR_G = 205.0f;
+const float BG_COLOR_B = 200.0f;
 
 
 
@@ -25,7 +32,7 @@ const float MOUSE_RADIUS = 6.0f; // Radius for mouse interaction
 std::mt19937 random_engine(std::random_device{}());
 std::uniform_real_distribution<float> random_angle(0.0f, TWO_PI);
 std::uniform_real_distribution<float> random_radius(MOUSE_RADIUS, MOUSE_RADIUS * 2);
-std::uniform_real_distribution<float> random_decay_var(-2.0f, 2.0f);
+std::uniform_real_distribution<float> random_decay_var(-2.0f, 4.0f);
 
 // Graphics and rendering
 bool enable_vsync = true;
@@ -45,6 +52,8 @@ constexpr float RECT_HEIGHT = 6.0f;           // Rectangle height in world units
 // Rectangle storage and rendering layers (0: background, 1: rectangles)
 std::vector<std::vector<objects::Rectangle*>> render_order(1);
 std::vector<std::unique_ptr<objects::Rectangle>> rectangles;
+std::vector<objects::Rectangle*> activeRects;
+std::vector<objects::Rectangle*> settledRects;
 int rectangle_count = 0;
 std::unique_ptr<objects::Rectangle> world_background = nullptr;
 
@@ -97,8 +106,7 @@ size_t angle_to_index(float angle) {
 
 // ########## RECTANGLE SPAWNING ##########
 
-std::vector<std::unique_ptr<objects::Rectangle>> 
-spawn_rectangles(float screen_x, float screen_y, bool randomize) {
+void spawn_rectangles(float screen_x, float screen_y, bool randomize) {
     std::vector<std::unique_ptr<objects::Rectangle>> new_rectangles;
 
     // Convert screen coordinates to world coordinates
@@ -108,7 +116,7 @@ spawn_rectangles(float screen_x, float screen_y, bool randomize) {
     // Validate spawn position is within world bounds
     if (world_x < 0.0f || world_x > world_width || 
         world_y < 0.0f || world_y > world_height) {
-        return {}; // Return empty vector if outside bounds
+        return;
     }
 
     // Spawn configuration constants
@@ -155,11 +163,10 @@ spawn_rectangles(float screen_x, float screen_y, bool randomize) {
         }
 
 
-        // // edge case where directly up and no sideways movement
-        // if (dir_x == 0.0f && dir_y == -1.0f) {
-        //     dir_x = rand() % 2 == 0 ? 0.01f : -0.01f;
-        //     dir_y = -0.99; // Prevent zero velocity
-        // }
+        // edge case where directly up and no sideways movement
+        if (dir_x == 0.0f && dir_y == -1.0f) {
+            dir_x = rand() % 2 == 0 ? 0.0001f : -0.0001f;
+        }
 
         // Position rectangle center at click point (will move with velocity)
         float initial_world_x = world_x - RECT_WIDTH / 2.0f;
@@ -175,6 +182,7 @@ spawn_rectangles(float screen_x, float screen_y, bool randomize) {
         rect->spawn_time = static_cast<float>(glfwGetTime());
         rect->decay_rate = DECAY_RATE + random_decay_var(random_engine); // Add random decay variation
         
+        rect->randPhase = random_angle(random_engine); // Random phase for flutter effect
         
         // Set random initial rotation angles for GPU
         rect->initial_pitch = TWO_PI * (static_cast<float>(rand()) / RAND_MAX);
@@ -188,7 +196,14 @@ spawn_rectangles(float screen_x, float screen_y, bool randomize) {
         new_rectangles.push_back(std::move(rect));
     }
 
-    return new_rectangles;
+
+// Add new rectangles to global storage and render order (layer 1)
+    for (auto& rect : new_rectangles) {
+        objects::Rectangle* rect_ptr = rect.get();
+        rectangles.push_back(std::move(rect));
+        activeRects.push_back(rect_ptr); // Add to active rectangles
+        render_order[layer_rectangles].push_back(rect_ptr);
+    }
 }
 
 // ########## MOUSE INPUT HANDLING ##########
@@ -210,14 +225,9 @@ void handle_mouse_hold_continuous() {
     if (left_mouse_held && mouse_hold_duration > HOLD_THRESHOLD) {
         // Spawn rectangles continuously at intervals
         if (mouse_hold_duration - last_spawn_time > SPAWN_INTERVAL) {
-            auto new_rectangles = spawn_rectangles(mouse_current_x, mouse_current_y, true);
+            spawn_rectangles(mouse_current_x, mouse_current_y, true);
             
-            // Add new rectangles to global storage and render order (layer 1)
-            for (auto& rect : new_rectangles) {
-                objects::Rectangle* rect_ptr = rect.get();
-                rectangles.push_back(std::move(rect));
-                render_order[layer_rectangles].push_back(rect_ptr);
-            }
+           
             
             last_spawn_time = mouse_hold_duration;
         }
@@ -256,8 +266,8 @@ void remove_out_of_bounds_rectangles() {
         
         // Calculate current position: position = initial + (velocity * time)
         float time_since_spawn = current_time - rect->spawn_time;
-        float current_center_x = rect->center.x + (rect->velocity.x * rect->speed * time_since_spawn);
-        float current_center_y = rect->center.y + (rect->velocity.y * rect->speed * time_since_spawn);
+        float current_center_x = rect->bbox.center.x + (rect->velocity.x * rect->speed * time_since_spawn);
+        float current_center_y = rect->bbox.center.y + (rect->velocity.y * rect->speed * time_since_spawn);
         
         // Convert to screen coordinates for bounds checking
         float screen_x = world_to_screen_x(current_center_x);
