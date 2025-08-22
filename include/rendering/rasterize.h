@@ -24,16 +24,16 @@ void end_batch_render();
 void draw_test_triangle();
 
 // Draw a polygon using the Polygon class
-void draw_polygon(const objects::Polygon& polygon);
+void draw_polygon(const obj::Polygon& polygon);
 
 // Draw a rectangle using the Rectangle class
-void draw_rectangle(const objects::Rectangle& rectangle);
+void draw_rectangle(const obj::Rectangle& rectangle);
 
 // Batch rendering functions for performance
-void batch_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles);
+void batch_draw_rectangles(const std::vector<obj::Rectangle*>& rectangles);
 
 // Instanced rendering for maximum performance
-void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles);
+void instanced_draw_rectangles(const std::vector<obj::Rectangle*>& rectangles);
 
 // Debug function to draw red dots at rectangle centers
-void draw_center_dots(const std::vector<objects::Rectangle*>& rectangles);
+void draw_center_dots(const std::vector<obj::Rectangle*>& rectangles);

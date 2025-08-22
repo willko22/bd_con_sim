@@ -82,7 +82,7 @@
 #endif
 
 
-// Global OpenGL objects
+// Global OpenGL obj
 static unsigned int shaderProgram = 0;      // Instanced rendering shader
 static unsigned int batchShaderProgram = 0; // Batch rendering shader (fallback)
 static unsigned int VAO = 0;
@@ -314,7 +314,7 @@ void end_batch_render() {
 }
 
 int _buffer_size = 17; // Updated: position(2) + size(2) + color(4) + angles(3) + velocity(2) + spawn_time(1) + flags(2) = 16 floats per instance
-void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles) {
+void instanced_draw_rectangles(const std::vector<obj::Rectangle*>& rectangles) {
     if (rectangles.empty()) return;
 
     
@@ -462,7 +462,7 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
     glUniform1f(uWorldScaleLoc, world_scale);
     glUniform2f(uWorldOffsetLoc, world_offset_x, world_offset_y);
 
-    glUniform1f(uVelocityChange, GRAVITY);
+    glUniform1f(uVelocityChange, GRAVITY_ACCELERATION);
     
     // NEW: Pass time and rotation speed to GPU for angle calculation
     glUniform1f(uTimeLoc, static_cast<float>(glfwGetTime()));
@@ -477,7 +477,7 @@ void instanced_draw_rectangles(const std::vector<objects::Rectangle*>& rectangle
 
 // ############# DEPRECATED #############
 
-void draw_center_dots(const std::vector<objects::Rectangle*>& rectangles) {
+void draw_center_dots(const std::vector<obj::Rectangle*>& rectangles) {
     if (rectangles.empty()) return;
     
     // Use the batch shader for simple rendering
@@ -528,7 +528,7 @@ void draw_center_dots(const std::vector<objects::Rectangle*>& rectangles) {
     glBindVertexArray(0);
 }
 
-void batch_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles) {
+void batch_draw_rectangles(const std::vector<obj::Rectangle*>& rectangles) {
     if (shaderProgram == 0 || rectangles.empty()) {
         return;
     }
@@ -540,7 +540,7 @@ void batch_draw_rectangles(const std::vector<objects::Rectangle*>& rectangles) {
     
     // Build vertex data for all rectangles
     for (const auto* rect : rectangles) {
-        const objects::Vec2List& points = rect->getRotatedPoints();
+        const obj::Vec2List& points = rect->getRotatedPoints();
         if (points.size() != 4) continue; // Skip non-rectangle polygons
         
         // Get rectangle color in OpenGL format

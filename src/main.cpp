@@ -8,7 +8,7 @@
 #include "imgui_impl_opengl3.h"
 
 // STB TrueType for font rendering
-#include "stb_truetype.h"
+// #include "stb_truetype.h"
 #include "rendering/window.h"
 #include "utils/globals.h"
 
@@ -111,6 +111,8 @@ int main() {
     int frame_count = 0;
     float fps = 0.0f;
     std::vector<size_t> to_remove;
+    // float age = 0.0f;
+
 
 
     // Main loop
@@ -119,11 +121,11 @@ int main() {
 
         // Calculate FPS and frame delta
         double current_time = glfwGetTime();
-        double frame_delta = current_time - last_frame_time; // Time since last frame
+        double dt = current_time - last_frame_time; // Time since last frame
         last_frame_time = current_time;
         
         // Update mouse hold duration and handle continuous hold behavior
-        update_mouse_hold_duration(frame_delta);
+        update_mouse_hold_duration(dt);
         handle_mouse_hold_continuous();
         
         // Remove rectangles that are completely outside world bounds (performance optimization)
@@ -141,31 +143,79 @@ int main() {
             last_time = current_time;
         }
 
-        // No longer need to update angles on CPU - GPU handles this now!
-        // The GPU calculates current angles as: initial_angle + (rotation_speed * time)
-        // This eliminates the bottleneck of updating thousands of rectangles on CPU
-        
-        float age = 0.0f;
-        objects::BCircle bbox = {};
+        // === PHYSICS-BASED SIMULATION ===
+        obj::BCircle bbox = {};
+        obj::Rectangle* rect = nullptr;
         for (size_t i = 0; i < activeRects.size(); ++i) {
-            auto* rect = activeRects[i];
+            rect = activeRects[i];
             if (!rect->move) continue; // Skip if rectangle is not moving
-            age = current_time - rect->spawn_time;
+            
+            // age = current_time - rect->spawn_time;
 
-            rect->adjustDirection(sin(age * FLUTTER_SPEED + rect->randPhase) 
-                                * FLUTTER_STRENGHT * frame_delta, GRAVITY * frame_delta); // Apply gravity effect
-            rect->setSpeed(RECTANGLE_SPEED + (SPAWN_SPEED - RECTANGLE_SPEED) * exp(rect->decay_rate * -age));
+            // === Apply Physics Forces ===
+            
+            // // Apply gravity force: F = ma, so F = m * g
+            // obj::Vec2 gravity_force(0.0f, GRAVITY_ACCELERATION);
+            // // rect->applyForce(gravity_force);
+            // rect->acceleration += gravity_force ; // Directly add to acceleration
+            
+            // // Apply flutter effect as a horizontal force
+            // // float flutter_force_x = sin(age * FLUTTER_SPEED + rect->randPhase) * FLUTTER_STRENGTH * rect->mass;
+            // // obj::Vec2 flutter_force(flutter_force_x, 0.0f);
+            // // rect->applyForce(flutter_force);
 
-            rect->movePolygon(frame_delta);
+
+            // float v2 = rect->velocity.magnitudeSquared(); 
+            // if (v2 > 0.0f) 
+            // { 
+            //     obj::Vec2 drag_acc = rect->velocity.normalized() / rect->air_calc * v2;
+            //     rect->acceleration -= drag_acc; 
+            //     // rect->applyForce(drag_acc); 
+            // }
+
+
+            // obj::Vec2 gravityForce(0.0f, rect->mass * GRAVITY_ACCELERATION);
+            // rect->applyForce(gravityForce);
+
+            // float v_mag = rect->velocity.magnitude();
+            // if (v_mag > 1e-6f) {
+            //     float dragMag = DRAG_COEFF * v_mag * v_mag;
+            //     obj::Vec2 dragForce = rect->velocity.normalized() * -dragMag;
+            //     rect->applyForce(dragForce);
+            // }
+
+            // if (rect->speed > 0.001f) {  // Avoid division by zero
+            //     float damping = std::exp(-rect->k * dt);
+            //     obj::Vec2 dragAccel = rect->velocity * damping * rect->speed * METERS_TO_WORLD / rect->mass;
+            //     float vdot = rect->velocity.dot(dragAccel); // should be negative
+            //     float maxDecel = rect->speed / dt;       // max allowed decel magnitude
+            //     if (-vdot > maxDecel) {
+            //         // clamp so velocity goes exactly to zero, not negative
+            //         dragAccel = rect->velocity * (-1.0f / dt);
+            //     }
+                
+            //     rect->acceleration += dragAccel;
+            // }
+
+            // rect->k = 0.5 * rho * Cd * A / mass
+            float damping = std::exp(-rect->k * dt); 
+
+            rect->velocity *= damping;
+
+            rect->velocity.y += GRAVITY_ACCELERATION * 4 * dt; // Gravity in m/s²
+            
+            rect->updatePhysics(dt);           
+
 
             bbox = rect->bbox; // returns min/max x/y (implement if not existing)
             if (bbox.center.y + bbox.radius > world_height) 
             {
                 // Option 1: stop movement
-                rect->setSpeed(0.0f);
+                rect->setVelocity(0.0f, 0.0f);
 
                 // Option 2: clamp position to boundary
                 rect->bbox.center.y = std::clamp(bbox.center.y, bbox.radius, world_height - bbox.radius);
+                rect->position.y = rect->bbox.center.y; // Keep position synchronized
 
                 // Option 3: mark as "dead" for removal
                 rect->stop_time = current_time; // Set stop time for GPU-side calculations

@@ -50,7 +50,7 @@ struct Color {
     const T* data() const { return &r; }
 };
 
-namespace objects {
+namespace obj {
 
 struct Vec2 {
     float x, y;
@@ -159,6 +159,16 @@ struct Vec2 {
             x = 0.0f;
             y = 0.0f;
         }
+    }
+    
+    // Get normalized copy (doesn't modify this vector)
+    Vec2 normalized() const noexcept {
+        const float mag = magnitude();
+        if (mag > 0.0f) {
+            const float inv_mag = 1.0f / mag;
+            return Vec2(x * inv_mag, y * inv_mag);
+        }
+        return Vec2(0.0f, 0.0f);
     }
     
     // Linear interpolation between two vectors
@@ -519,7 +529,7 @@ struct BCircle {
         return 2.0f * 3.141592653589793f * radius;
     }
     
-    // Check if circle intersects with a rectangle (useful for collision with game objects)
+    // Check if circle intersects with a rectangle (useful for collision with game obj)
     inline bool intersects(const BBox& bbox) const noexcept {
         // Find the closest point on the rectangle to the circle center
         const float closest_x = std::max(bbox.x, std::min(center.x, bbox.x + bbox.width));
@@ -595,10 +605,16 @@ struct Polygon {
     float spawn_time = 0.0f;     // 4 bytes - time when rectangle was spawned (in seconds)
     float stop_time = 0.0f;      // 4 bytes - time when rectangle was stopped (in seconds)
     
-    float speed = 0.0f; // 4 bytes (speed of the polygon, if needed)
+    // Physics properties
+    Vec2 position;      // 8 bytes - current position (duplicate of bbox.center for physics clarity)
+    Vec2 velocity;      // 8 bytes - velocity vector in world units per second
+    Vec2 acceleration;  // 8 bytes - acceleration vector in world units per second²
+    float mass = 1.0f;  // 4 bytes - mass for physics calculations
+    
+    // Legacy properties (keeping for compatibility)
+    float speed = 0.0f; // 4 bytes (deprecated - use velocity magnitude instead)
     float decay_rate = 0.0f; // 4 bytes - decay rate for time-based effects (e.g., fading out)
-    Vec2 velocity; // 8 bytes (velocity vector for physics, if needed)
-    Vec2 direction; // 4 bytes (speed of the polygon, if needed)
+    Vec2 direction; // 8 bytes (deprecated - use velocity direction instead)
 
 
     // Cached trigonometric values - computed once, used many times
@@ -610,16 +626,46 @@ struct Polygon {
     mutable float roll_cos;
 
 
-    Polygon() = default;
+    Polygon() {
+        // Initialize physics properties
+        position = Vec2(0.0f, 0.0f);
+        velocity = Vec2(0.0f, 0.0f);
+        acceleration = Vec2(0.0f, 0.0f);
+        mass = 1.0f;
+        
+        // Initialize legacy properties
+        speed = 0.0f;
+        direction = Vec2(1.0f, 0.0f);
+    }
     
     // Constructor with position - BCircle is calculated automatically
     Polygon(const Color<u8>& c, i16 x = 0, i16 y = 0) 
-        : color(c), bbox(Vec2(static_cast<float>(x), static_cast<float>(y)), 0.0f) {}
+        : color(c), bbox(Vec2(static_cast<float>(x), static_cast<float>(y)), 0.0f) {
+        // Initialize physics properties
+        position = Vec2(static_cast<float>(x), static_cast<float>(y));
+        velocity = Vec2(0.0f, 0.0f);
+        acceleration = Vec2(0.0f, 0.0f);
+        mass = 1.0f;
+        
+        // Initialize legacy properties
+        speed = 0.0f;
+        direction = Vec2(1.0f, 0.0f);
+    }
     
     // Constructor with points - BCircle is calculated from points
     Polygon(const Color<u8>& c, const Vec2List& pts) 
         : color(c), points_original(pts), points_rotated(pts) {
         _calculateBBox();
+        
+        // Initialize physics properties
+        position = bbox.center;
+        velocity = Vec2(0.0f, 0.0f);
+        acceleration = Vec2(0.0f, 0.0f);
+        mass = 1.0f;
+        
+        // Initialize legacy properties
+        speed = 0.0f;
+        direction = Vec2(1.0f, 0.0f);
     }
     
     // Constructor with points and position
@@ -645,38 +691,93 @@ struct Polygon {
         velocity = direction * speed; 
     }
 
-    void adjustDirection(float vx, float vy) {
-        direction.x += vx;
-        direction.y += vy;
+    // === Physics-based movement system ===
+    
+    // Apply a force to the polygon (F = ma, so a = F/m)
+    void applyForce(const Vec2& force) {
+        acceleration += force / mass;
+    }
+    
+    // Apply impulse (immediate velocity change)
+    void applyImpulse(const Vec2& impulse) {
+        velocity += impulse / mass;
+    }
+    
+    // Set velocity directly
+    void setVelocity(const Vec2& vel) {
+        velocity = vel;
+        // Update legacy direction and speed for compatibility
+        if (velocity.magnitude() > 0.0f) {
+            direction = velocity.normalized();
+            speed = velocity.magnitude();
+        }
+    }
+    
+    // Set velocity from components
+    void setVelocity(float vx, float vy) {
+        setVelocity(Vec2(vx, vy));
+    }
+    
+    // Update physics simulation (call once per frame)
+    void updatePhysics(float dt) {
+        if (!move) return;
 
-        direction.normalize(); // Normalize velocity to unit vector
-        velocity = direction * speed; 
+        // Integrate acceleration to velocity (Euler integration)
+        velocity += acceleration * dt;
+        
+        // Integrate velocity to position
+        position += velocity * dt;
+        bbox.center = position; // Keep bbox.center synchronized
+        
+        // Reset acceleration for next frame (forces must be reapplied each frame)
+        acceleration = Vec2(0.0f, 0.0f);
+        
+        // Update legacy properties for compatibility
+        if (velocity.magnitude() > 0.0f) {
+            direction = velocity.normalized();
+            speed = velocity.magnitude();
+        }
+    }
+
+    // === Legacy compatibility methods (deprecated but kept for existing code) ===
+    
+    void adjustDirection(float vx, float vy) {
+        // Convert to modern physics: treat as velocity adjustment
+        velocity.x += vx;
+        velocity.y += vy;
+        
+        // Update legacy properties
+        if (velocity.magnitude() > 0.0f) {
+            direction = velocity.normalized();
+            speed = velocity.magnitude();
+        }
     }
 
     void adjustDirection(const Vec2& v) {
-        direction += v;
-        
-        direction.normalize(); // Normalize velocity to unit vector
-        velocity = direction * speed; 
+        adjustDirection(v.x, v.y);
     }
 
     void setSpeed(float new_speed) {
+        // Keep direction, change magnitude
+        if (velocity.magnitude() > 0.0f) {
+            velocity = velocity.normalized() * new_speed;
+            direction = velocity.normalized();
+        } else {
+            // If no current velocity, don't set a default direction
+            // Let the physics system handle initial velocity through impulses
+            velocity = Vec2(0.0f, 0.0f);
+            direction = Vec2(1.0f, 0.0f); // Keep legacy direction for compatibility
+        }
         speed = new_speed;
-        velocity = direction * speed; // Update velocity based on direction and speed
     }
 
     void adjustSpeed(float delta_speed) {
-        speed += delta_speed;
-        velocity = direction * speed; // Update velocity based on direction and speed
+        setSpeed(speed + delta_speed);
     }
 
     void movePolygon(float dt) {
-        if (move) {
-            // Update position based on velocity and time delta
-            bbox.center += velocity * dt;
-            // Update bounding box and points based on new center
-            // _apply_move_offset_to_points(dt);
-        }
+        // Legacy wrapper for physics update
+        updatePhysics(dt);
     }
 
 
@@ -1043,13 +1144,24 @@ protected:
 // Rectangle class - inherits from Polygon with specific constraints
 struct Rectangle : public Polygon {
     float width, height;  // Rectangle dimensions (always positive, float for sub-pixel precision)
-    
+    float calcArea;
+    float air_calc;
+    float k;
+
     // Constructor with position, dimensions, color, and optional rotation
     Rectangle(float x, float y, float w, float h, const Color<u8>& c, float rotation_radians = 0.0f) 
         : Polygon(c), width(w), height(h) {
         _createRectanglePoints(x, y, w, h);
         _calculateBBox();
-        
+
+        calcArea = w * h * WORLD_TO_METERS * WORLD_TO_METERS; // Calculate area once during construction
+        // Initialize physics properties
+        position = Vec2(x + w/2.0f, y + h/2.0f); // Center position
+        velocity = Vec2(0.0f, 0.0f);
+        acceleration = Vec2(0.0f, 0.0f);
+        mass = 1.0f;  // Default mass
+
+
         // Set initial angles for GPU-side rotation calculation
         initial_pitch = rotation_radians;
         initial_yaw = rotation_radians;  
@@ -1108,6 +1220,16 @@ struct Rectangle : public Polygon {
     void addPoint(const Vec2& point) = delete;
     void addPoint(i16 x, i16 y, int mode) = delete;
 
+    // void calcAirCalc() {
+    //     // Calculate air resistance based on rectangle dimensions
+    //     // Example: using width and height to calculate a simple drag coefficient
+    //     air_calc = 0.5f * AIR_DENSITY * DRAG_COEFF * area; // Simplified example, can be adjusted
+    // }
+    void calcAirCalc() {
+        k = 0.5f * AIR_DENSITY * DRAG_COEFF * calcArea / mass;
+    }
+
+
 private:
     // Create the 4 corner points of a rectangle
     void _createRectanglePoints(float x, float y, float w, float h) {
@@ -1127,5 +1249,5 @@ private:
     }
 };
 
-} // namespace objects
+} // namespace obj
 

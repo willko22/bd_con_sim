@@ -43,7 +43,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
             std::cout << "Left mouse button PRESSED at (" << mouse_current_x << ", " << mouse_current_y << ")" << std::endl;
             
             // Immediate click behavior - use already tracked mouse position
-            spawn_rectangles(mouse_current_x, mouse_current_y, true);
+            spawn_rectangles(mouse_current_x, mouse_current_y);
             break;
         }
             

@@ -31,20 +31,23 @@ using Mat3 = std::array<float, 9>;
 
 // ########## FORWARD DECLARATIONS ##########
 
-namespace objects {
+namespace obj {
     struct Rectangle;
 }
 
 // ########## Physics ##########
-// Speed of changing velocity vector to downward direction 
-extern const float GRAVITY;
+// Physics simulation constants
+extern const float GRAVITY_ACCELERATION;  // Gravitational acceleration in world units/s²
+extern const float DRAG_COEFF;  // Air drag coefficient
+extern const float AIR_DENSITY;           // Density of air at sea level (kg/m³)
+extern const float DEFAULT_MASS;          // Default mass for rectangles
+extern const float EXPLOSION_STRENGTH;    // Initial explosion strength when spawning rectangles
+extern const float FLUTTER_STRENGTH;      // Horizontal oscillation force strength
+extern const float FLUTTER_SPEED;         // Speed of flutter effect oscillation
+
+// Other constants
 extern const float MOUSE_RADIUS;
-extern const float ROTATION_SPEED;    // Rotation speed in radians per second
-extern const float RECTANGLE_SPEED; // Movement speed in world units per second
-extern const float SPAWN_SPEED; // Speed of spawning rectangles
-extern const float DECAY_RATE;
-extern const float FLUTTER_STRENGHT; // Adjust flutter strength
-extern const float FLUTTER_SPEED; // Speed of flutter effect
+extern const float ROTATION_SPEED;        // Rotation speed in radians per second
 
 
 extern const float BG_COLOR_R; // Background color components
@@ -52,11 +55,20 @@ extern const float BG_COLOR_G;
 extern const float BG_COLOR_B;
 
 
+extern const float RECT_WIDTH;   // Rectangle width in world units
+extern const float RECT_HEIGHT;  // Rectangle height in world units
+
+
+extern const float METERS_TO_WORLD; // Conversion factor from meters to world units
+extern const float WORLD_TO_METERS; // Conversion factor from world units to meters
+
+
 // ########## RANDOM NUMBER GENERATION ##########
 extern std::mt19937 random_engine;
 extern std::uniform_real_distribution<float> random_angle; // Random angle distribution
 extern std::uniform_real_distribution<float> random_radius; // Random radius distribution
-extern std::uniform_real_distribution<float> random_decay_var; // Random decay variation
+extern std::uniform_real_distribution<float> random_impuls_increase; // Random decay variation
+
 
 // ########## GRAPHICS AND RENDERING ##########
 
@@ -77,12 +89,12 @@ extern float world_offset_y; // Y offset for screen positioning
 // ########## ENTITY MANAGEMENT ##########
 
 // Rectangle storage and rendering
-extern std::vector<std::vector<objects::Rectangle*>> render_order;
-extern std::vector<std::unique_ptr<objects::Rectangle>> rectangles;
-extern std::vector<objects::Rectangle*> activeRects;
-extern std::vector<objects::Rectangle*> settledRects;
+extern std::vector<std::vector<obj::Rectangle*>> render_order;
+extern std::vector<std::unique_ptr<obj::Rectangle>> rectangles;
+extern std::vector<obj::Rectangle*> activeRects;
+extern std::vector<obj::Rectangle*> settledRects;
 extern int rectangle_count;
-extern std::unique_ptr<objects::Rectangle> world_background;
+extern std::unique_ptr<obj::Rectangle> world_background;
 
 extern size_t layer_rectangles;
 
@@ -110,7 +122,7 @@ extern std::vector<Mat2> mat_table;
 // ========== Entity Creation ==========
 
 // Spawn rectangles at specified position
-void spawn_rectangles(float x, float y, bool randomize);
+void spawn_rectangles(float x, float y);
 
 // ========== Input Processing ==========
 
