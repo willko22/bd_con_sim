@@ -17,12 +17,14 @@ const float AIR_DENSITY = 1.225f;
 const float DEFAULT_MASS = .0001f;
 const float EXPLOSION_STRENGTH = 400.0f; // m/s
 
+const float MOUSE_MASS = 20.0f;   // mass for mouse interaction
+const float MOUSE_RADIUS = 10.0f; // Radius for mouse interaction
+const float MOUSE_DRAG = 0.1f;    // drag applied when mouse is moving
+
 // Movement constants
 const float ROTATION_SPEED = 1.0f;   // Rotation speed in radians per second
 const float FLUTTER_STRENGTH = 0.5f; // Flutter effect strength
 const float FLUTTER_SPEED = 1.0f;    // Flutter effect frequency
-
-const float MOUSE_RADIUS = 10.0f; // Radius for mouse interaction
 
 const float BG_COLOR_R = 210.0f; // Background color components
 const float BG_COLOR_G = 205.0f;
@@ -46,6 +48,8 @@ std::uniform_real_distribution<float>
 bool enable_vsync = true;
 float screen_width = 800.0f;
 float screen_height = 600.0f;
+
+bool apply_gravity = true;
 
 // World coordinate system
 float world_width = 1000.0f; // World width in world units
@@ -75,6 +79,10 @@ float mouse_current_x = 0.0f;
 float mouse_current_y = 0.0f;
 float mouse_world_x = 0.0f;
 float mouse_world_y = 0.0f;
+float mouse_world_x_prev = 0.0f;
+float mouse_world_y_prev = 0.0f;
+float mouse_last_t = 0.0f;
+float mouse_current_t = 0.0f;
 double mouse_hold_duration = 0.0;
 
 // Performance tables

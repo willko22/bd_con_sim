@@ -209,62 +209,22 @@ int main()
         // === PHYSICS-BASED SIMULATION ===
         obj::BCircle bbox = {};
         obj::Rectangle *rect = nullptr;
+        float cx, cy, seg_vx, seg_vy, seg_len2;
+        float dt_mouse = mouse_current_t - mouse_last_t;
+        float vx_mouse = (mouse_world_x - mouse_world_x_prev) / dt_mouse;
+        float vy_mouse = (mouse_world_y - mouse_world_y_prev) / dt_mouse;
+        float speed_mouse =
+            std::sqrt(vx_mouse * vx_mouse + vy_mouse * vy_mouse);
+        const float OUT_OFFSET = 1.0f;
+        const float OFFSET_TIME =
+            1.0f; // Time in seconds to smoothly push rectangle out
+        const float EPS = 1e-6f;
+
         for (size_t i = 0; i < activeRects.size(); ++i)
         {
             rect = activeRects[i];
             if (!rect->move)
                 continue; // Skip if rectangle is not moving
-
-            // age = current_time - rect->spawn_time;
-
-            // === Apply Physics Forces ===
-
-            // // Apply gravity force: F = ma, so F = m * g
-            // obj::Vec2 gravity_force(0.0f, GRAVITY_ACCELERATION);
-            // // rect->applyForce(gravity_force);
-            // rect->acceleration += gravity_force ; // Directly add
-            // to acceleration
-
-            // // Apply flutter effect as a horizontal force
-            // // float flutter_force_x = sin(age * FLUTTER_SPEED +
-            // rect->randPhase) * FLUTTER_STRENGTH * rect->mass;
-            // // obj::Vec2 flutter_force(flutter_force_x, 0.0f);
-            // // rect->applyForce(flutter_force);
-
-            // float v2 = rect->velocity.magnitudeSquared();
-            // if (v2 > 0.0f)
-            // {
-            //     obj::Vec2 drag_acc = rect->velocity.normalized() /
-            //     rect->air_calc * v2; rect->acceleration -=
-            //     drag_acc;
-            //     // rect->applyForce(drag_acc);
-            // }
-
-            // obj::Vec2 gravityForce(0.0f, rect->mass *
-            // GRAVITY_ACCELERATION); rect->applyForce(gravityForce);
-
-            // float v_mag = rect->velocity.magnitude();
-            // if (v_mag > 1e-6f) {
-            //     float dragMag = DRAG_COEFF * v_mag * v_mag;
-            //     obj::Vec2 dragForce = rect->velocity.normalized() *
-            //     -dragMag; rect->applyForce(dragForce);
-            // }
-
-            // if (rect->speed > 0.001f) {  // Avoid division by zero
-            //     float damping = std::exp(-rect->k * dt);
-            //     obj::Vec2 dragAccel = rect->velocity * damping *
-            //     rect->speed
-            //     * METERS_TO_WORLD / rect->mass; float vdot =
-            //     rect->velocity.dot(dragAccel); // should be
-            //     negative float maxDecel = rect->speed / dt; // max
-            //     allowed decel magnitude if (-vdot > maxDecel) {
-            //         // clamp so velocity goes exactly to zero, not
-            //         negative dragAccel = rect->velocity * (-1.0f /
-            //         dt);
-            //     }
-
-            //     rect->acceleration += dragAccel;
-            // }
 
             // rect->k = 0.5 * rho * Cd * A / mass
             float damping = std::exp(-rect->k * dt);
@@ -272,24 +232,114 @@ int main()
             rect->velocity *= damping;
 
             // Gravity in m/s²
-            rect->velocity.y += GRAVITY_ACCELERATION * 4 * dt;
+            if (apply_gravity)
+                rect->velocity.y += GRAVITY_ACCELERATION * 4 * dt;
 
-            float x_dist = rect->bbox.center.x - mouse_world_x;
-            float y_dist = rect->bbox.center.y - mouse_world_y;
+            closest_point_on_segment(mouse_world_x_prev, mouse_world_y_prev,
+                                     mouse_world_x, mouse_world_y,
+                                     rect->bbox.center.x, rect->bbox.center.y,
+                                     cx, cy, seg_vx, seg_vy, seg_len2);
 
-            // avoid div by zero with small offset
-            float dist_squared = x_dist * x_dist + y_dist * y_dist;
-            float dist = std::sqrt(dist_squared);
-            if (dist < MOUSE_RADIUS + rect->bbox.radius && dist > 1.0f &&
-                rect->spawn_time + 0.5f < current_time)
+            float dx = rect->bbox.center.x - cx;
+            float dy = rect->bbox.center.y - cy;
+            float dist = std::sqrt(dx * dx + dy * dy);
+            float radius = MOUSE_RADIUS + rect->bbox.radius;
+
+            // if (dist < radius && rect->spawn_time + 0.5f < current_time)
+            // {
+
+            // }
+
+            // only correct if inside the swept circle
+            if (dist < radius && rect->spawn_time + 0.5f < current_time)
             {
-                // Repulsion force inversely proportional to distance
-                // squared
-                float force_magnitude = EXPLOSION_STRENGTH;
+                float nx, ny;
+                if (dist > EPS)
+                {
+                    // normal from closest point to particle
+                    nx = dx / dist;
+                    ny = dy / dist;
+                }
+                else
+                {
+                    // particle exactly on the segment point -> pick
+                    // perpendicular to segment
+                    float seg_len = std::sqrt(seg_len2);
+                    if (seg_len > EPS)
+                    {
+                        nx = -seg_vy / seg_len;
+                        ny = seg_vx / seg_len;
+                    }
+                    else
+                    {
+                        // segment is a point (mouse didn't move) -> push to +X
+                        nx = 1.0f;
+                        ny = 0.0f;
+                    }
+                }
 
-                // Apply force away from mouse position
-                rect->velocity.x += (x_dist / dist) * force_magnitude * dt;
-                rect->velocity.y += (y_dist / dist) * force_magnitude * dt;
+                // Calculate required velocity to smoothly push rectangle out of
+                // mouse radius, scaled by mouse speed for fast movements
+                float target_distance = radius + OUT_OFFSET;
+                float current_distance = dist;
+                float distance_to_travel = target_distance - current_distance;
+
+                // Base velocity needed to reach target in OFFSET_TIME
+                float base_velocity = distance_to_travel / OFFSET_TIME;
+
+                // Scale the pushing force based on mouse speed to handle fast
+                // movements, but cap it to prevent skyrocketing
+                float mouse_speed_factor =
+                    speed_mouse * 0.05f; // Reduced sensitivity
+                float mouse_speed_multiplier =
+                    1.0f + std::min(mouse_speed_factor, 2.0f); // Cap at 3x max
+                float required_velocity =
+                    base_velocity * mouse_speed_multiplier;
+
+                // Apply the velocity in the normal direction (away from mouse)
+                rect->velocity.x += nx * required_velocity;
+                rect->velocity.y += ny * required_velocity;
+
+                // Only apply push force to rectangles that are "in front" of
+                // mouse movement
+                if (speed_mouse > EPS) // Only if mouse is actually moving
+                {
+                    float penetration = (radius - dist) / radius; // 0..1
+
+                    // Normalize mouse velocity vector
+                    float mvx = vx_mouse / speed_mouse;
+                    float mvy = vy_mouse / speed_mouse;
+
+                    // Vector from mouse position to rectangle center
+                    float to_rect_x = rect->bbox.center.x - mouse_world_x;
+                    float to_rect_y = rect->bbox.center.y - mouse_world_y;
+                    float to_rect_len = std::sqrt(to_rect_x * to_rect_x +
+                                                  to_rect_y * to_rect_y);
+
+                    if (to_rect_len > EPS)
+                    {
+                        // Normalize vector to rectangle
+                        to_rect_x /= to_rect_len;
+                        to_rect_y /= to_rect_len;
+
+                        // Calculate dot product: positive means rectangle is
+                        // "in front" of mouse movement
+                        float dot_product = mvx * to_rect_x + mvy * to_rect_y;
+
+                        // Only apply force if rectangle is in front
+                        // (dot_product > 0) Use the dot product as a multiplier
+                        // to scale force based on alignment
+                        if (dot_product > 0.0f)
+                        {
+                            float force_magnitude = speed_mouse * dt_mouse *
+                                                    penetration * MOUSE_MASS *
+                                                    dot_product;
+
+                            rect->velocity.x += mvx * force_magnitude;
+                            rect->velocity.y += mvy * force_magnitude;
+                        }
+                    }
+                }
             }
 
             rect->updatePhysics(dt);
@@ -298,23 +348,13 @@ int main()
                                // not existing)
             if (bbox.center.y + bbox.radius > world_height)
             {
-                // Option 1: stop movement
                 rect->setVelocity(0.0f, 0.0f);
-
-                // Option 2: clamp position to boundary
                 rect->bbox.center.y = std::clamp(bbox.center.y, bbox.radius,
                                                  world_height - bbox.radius);
-                rect->position.y =
-                    rect->bbox.center.y; // Keep position synchronized
-
-                // Option 3: mark as "dead" for removal
-                rect->stop_time = current_time; // Set stop time for GPU-side
-                                                // calculations
+                rect->position.y = rect->bbox.center.y;
+                rect->stop_time = current_time;
                 rect->move = false;
-
                 to_remove.push_back(i);
-                // rect->should_rotate = false; // Disable rotation to
-                // stop GPU updates
             }
         }
 

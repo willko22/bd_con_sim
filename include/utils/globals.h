@@ -37,18 +37,20 @@ namespace obj
 
 // ########## Physics ##########
 // Physics simulation constants
-extern const float
-    GRAVITY_ACCELERATION;        // Gravitational acceleration in world units/s²
+// Gravitational acceleration in world units/s²
+extern const float GRAVITY_ACCELERATION;
 extern const float DRAG_COEFF;   // Air drag coefficient
 extern const float AIR_DENSITY;  // Density of air at sea level (kg/m³)
 extern const float DEFAULT_MASS; // Default mass for rectangles
-extern const float
-    EXPLOSION_STRENGTH; // Initial explosion strength when spawning rectangles
+// Initial explosion strength when spawning rectangles
+extern const float EXPLOSION_STRENGTH;
 extern const float FLUTTER_STRENGTH; // Horizontal oscillation force strength
 extern const float FLUTTER_SPEED;    // Speed of flutter effect oscillation
+extern const float MOUSE_MASS;       // mass for mouse interaction
+extern const float MOUSE_DRAG;       // drag applied when mouse is moving
+extern const float MOUSE_RADIUS;
 
 // Other constants
-extern const float MOUSE_RADIUS;
 extern const float ROTATION_SPEED; // Rotation speed in radians per second
 
 extern const float BG_COLOR_R; // Background color components
@@ -78,6 +80,8 @@ extern std::uniform_real_distribution<float>
 extern bool enable_vsync;
 extern float screen_width;  // Current screen width in pixels
 extern float screen_height; // Current screen height in pixels
+
+extern bool apply_gravity; // Toggle gravity application
 
 // ========== World Coordinate System ==========
 
@@ -111,6 +115,10 @@ extern float mouse_current_x;
 extern float mouse_current_y;
 extern float mouse_world_x;
 extern float mouse_world_y;
+extern float mouse_world_x_prev;
+extern float mouse_world_y_prev;
+extern float mouse_last_t;
+extern float mouse_current_t;
 extern double mouse_hold_duration; // Duration in seconds
 
 // ########## PERFORMANCE OPTIMIZATION ##########
@@ -190,3 +198,25 @@ void remove_out_of_bounds_rectangles();
 // extern bool game_paused;
 // extern float delta_time;
 // extern int current_level;
+
+// helper: closest point on segment AB to point P
+static inline void closest_point_on_segment(float ax, float ay, float bx,
+                                            float by, float px, float py,
+                                            float &outx, float &outy,
+                                            float &outvx, float &outvy,
+                                            float &outlen2)
+{
+    float vx = bx - ax, vy = by - ay;
+    float wx = px - ax, wy = py - ay;
+    float len2 = vx * vx + vy * vy;
+    float t = (len2 > 0.0f) ? ((wx * vx + wy * vy) / len2) : 0.0f;
+    if (t < 0.0f)
+        t = 0.0f;
+    if (t > 1.0f)
+        t = 1.0f;
+    outx = ax + vx * t;
+    outy = ay + vy * t;
+    outvx = vx;
+    outvy = vy;
+    outlen2 = len2;
+}
