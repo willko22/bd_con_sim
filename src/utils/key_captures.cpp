@@ -98,6 +98,10 @@ void mouse_position_callback(GLFWwindow* window, double xpos, double ypos) {
     // Update current mouse position
     mouse_current_x = static_cast<float>(xpos);
     mouse_current_y = static_cast<float>(ypos);
+
+    // Convert to world coordinates
+    mouse_world_x = screen_to_world_x(mouse_current_x);
+    mouse_world_y = screen_to_world_y(mouse_current_y);
     
     // Optional: Add drag behavior here if needed
     // if (is_mouse_dragging()) {

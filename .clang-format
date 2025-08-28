@@ -1,32 +1,15 @@
-# C++23 Formatting Configuration
 BasedOnStyle: LLVM
-Language: Cpp
-Standard: c++23
-
-# Naming conventions
-# Classes: PascalCase
-# Functions: camelCase  
-# Variables: snake_case
-# Private members: _snake_case
-# Constants: ALL_CAPS
-
-# Indentation
 IndentWidth: 4
-UseTab: Never
 TabWidth: 4
+UseTab: Never
 
-# Braces
+ColumnLimit: 80
+BreakAfterBinaryOperators: true
+
 BreakBeforeBraces: Allman
-AllowShortBlocksOnASingleLine: Empty
-AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+IndentCaseLabels: false
 
-# Spacing
-SpaceAfterCStyleCast: true
-SpaceBeforeParens: ControlStatements
-SpaceInEmptyParentheses: false
-
-# Line length
-ColumnLimit: 120
-
-# Comments
-ReflowComments: false
+AccessModifierOffset: -4
+NamespaceIndentation: All
+FixNamespaceComments: false 
