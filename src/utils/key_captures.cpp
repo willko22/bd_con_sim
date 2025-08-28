@@ -146,10 +146,37 @@ void mouse_position_callback(GLFWwindow *window, double xpos, double ypos)
 void framebuffer_size_callback(GLFWwindow *window, int width, int height)
 {
     (void)window; // Suppress unused parameter warning
-    glViewport(0, 0, width, height);
-    update_viewport_cache(width, height);
+
+    // Calculate aspect ratio preserving viewport
+    const float target_aspect =
+        world_width / world_height; // Target aspect ratio from world dimensions
+    const float window_aspect =
+        static_cast<float>(width) / static_cast<float>(height);
+
+    if (window_aspect > target_aspect)
+    {
+        // Window is wider than target aspect ratio - pillarbox (black bars on
+        // sides)
+        viewport_height = height;
+        viewport_width = static_cast<int>(height * target_aspect);
+        viewport_x = (width - viewport_width) / 2;
+        viewport_y = 0;
+    }
+    else
+    {
+        // Window is taller than target aspect ratio - letterbox (black bars on
+        // top/bottom)
+        viewport_width = width;
+        viewport_height = static_cast<int>(width / target_aspect);
+        viewport_x = 0;
+        viewport_y = (height - viewport_height) / 2;
+    }
+
+    // Set viewport to maintain aspect ratio
+    glViewport(viewport_x, viewport_y, viewport_width, viewport_height);
+    update_viewport_cache(viewport_width, viewport_height);
 
     // Update world coordinate transform for resolution independence
-    update_world_transform(static_cast<float>(width),
-                           static_cast<float>(height));
+    update_world_transform(static_cast<float>(viewport_width),
+                           static_cast<float>(viewport_height));
 }

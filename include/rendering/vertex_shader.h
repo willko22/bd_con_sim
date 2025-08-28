@@ -1,4 +1,4 @@
-const char* vertexShaderSource = R"(
+const char *vertexShaderSource = R"(
 #version 460 core
 layout (location = 0) in vec2 aPos;        // Base rectangle vertex position (0-1 range)
 layout (location = 1) in vec2 aOffset;     // Per-instance INITIAL position offset (world coordinates)
@@ -9,6 +9,7 @@ layout (location = 5) in vec2 aVelocity;   // Per-instance velocity (world units
 layout (location = 6) in float aSpawnTime; // Per-instance spawn time (seconds)
 layout (location = 7) in float aStopTime; // Per-instance spawn time (seconds)
 layout (location = 8) in vec2 aFlags;      // Per-instance flags (x=should_rotate, y=move)
+layout (location = 9) in float aIsBackground;    // Padding to make size multiple of vec4
 
 // Trig table texture and size
 uniform sampler1D uTrigTable;
@@ -71,9 +72,18 @@ void main()
     vec2 ndcOffset = (screenPos / uScreenSize) * 2.0 - 1.0;
     ndcOffset.y = -ndcOffset.y; // Flip Y coordinate for screen space
     
-    // Convert world size to screen size, then to NDC size
+    // Convert world size to NDC size 
     vec2 worldSizeScaled = aSize * uWorldScale; // World size to screen size
     vec2 ndcSize = (worldSizeScaled / uScreenSize) * 2.0; // Screen size to NDC size
+    
+    // Apply uniform scaling only for objects that should maintain square proportions
+    // Background rectangles (should_rotate=false, move=false) should fill their intended dimensions
+    if (aIsBackground < 0.5) {
+        // Ensure squares stay square by using the same scale factor for both dimensions
+        // Take the minimum to ensure we don't overflow the screen
+        float uniformScale = min(ndcSize.x / aSize.x, ndcSize.y / aSize.y);
+        ndcSize = aSize * uniformScale;
+    }
     
     // Scale first using NDC size
     vec2 scaledPos = centeredPos * ndcSize;
@@ -134,4 +144,3 @@ void main()
 //     vertexColor = aColor;
 // }
 // )";
-

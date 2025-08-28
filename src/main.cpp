@@ -56,22 +56,6 @@ int main()
         return -1;
     }
 
-    // Disable
-    // v-sync
-    // to
-    // see
-    // maximum
-    // FPS
-    // (set
-    // to
-    // 1
-    // to
-    // enable
-    // v-sync
-    // for
-    // 60fps
-    // cap)
-
     bool error;
     GLFWwindow *window;
 
@@ -107,6 +91,9 @@ int main()
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     std::cout << "ImGui initialized successfully" << std::endl;
+
+    // Initialize world background after OpenGL context is ready
+    init_world_background();
 
     std::cout << "=== GPU Information ===" << std::endl;
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
@@ -233,7 +220,8 @@ int main()
 
             // Gravity in m/s²
             if (apply_gravity)
-                rect->velocity.y += GRAVITY_ACCELERATION * 4 * dt;
+                rect->velocity.y +=
+                    GRAVITY_ACCELERATION * (RECT_WIDTH + 1) * dt;
 
             closest_point_on_segment(mouse_world_x_prev, mouse_world_y_prev,
                                      mouse_world_x, mouse_world_y,
@@ -251,7 +239,7 @@ int main()
             // }
 
             // only correct if inside the swept circle
-            if (dist < radius && rect->spawn_time + 0.5f < current_time)
+            if (dist < radius && rect->spawn_time + 1.f < current_time)
             {
                 float nx, ny;
                 if (dist > EPS)
@@ -259,46 +247,33 @@ int main()
                     // normal from closest point to particle
                     nx = dx / dist;
                     ny = dy / dist;
+
+                    // Calculate required velocity to smoothly push rectangle
+                    // out of mouse radius, scaled by mouse speed for fast
+                    // movements
+                    float target_distance = radius + OUT_OFFSET;
+                    float current_distance = dist;
+                    float distance_to_travel =
+                        target_distance - current_distance;
+
+                    // Base velocity needed to reach target in OFFSET_TIME
+                    float base_velocity = distance_to_travel / OFFSET_TIME;
+
+                    // Scale the pushing force based on mouse speed to handle
+                    // fast movements, but cap it to prevent skyrocketing
+                    float mouse_speed_factor =
+                        speed_mouse * 0.05f; // Reduced sensitivity
+                    float mouse_speed_multiplier =
+                        1.0f + std::min(mouse_speed_factor,
+                                        RECT_SIM_WIDTH); // Cap at 3x max
+                    float required_velocity =
+                        base_velocity * mouse_speed_multiplier;
+
+                    // Apply the velocity in the normal direction (away from
+                    // mouse)
+                    rect->velocity.x += nx * required_velocity;
+                    rect->velocity.y += ny * required_velocity;
                 }
-                else
-                {
-                    // particle exactly on the segment point -> pick
-                    // perpendicular to segment
-                    float seg_len = std::sqrt(seg_len2);
-                    if (seg_len > EPS)
-                    {
-                        nx = -seg_vy / seg_len;
-                        ny = seg_vx / seg_len;
-                    }
-                    else
-                    {
-                        // segment is a point (mouse didn't move) -> push to +X
-                        nx = 1.0f;
-                        ny = 0.0f;
-                    }
-                }
-
-                // Calculate required velocity to smoothly push rectangle out of
-                // mouse radius, scaled by mouse speed for fast movements
-                float target_distance = radius + OUT_OFFSET;
-                float current_distance = dist;
-                float distance_to_travel = target_distance - current_distance;
-
-                // Base velocity needed to reach target in OFFSET_TIME
-                float base_velocity = distance_to_travel / OFFSET_TIME;
-
-                // Scale the pushing force based on mouse speed to handle fast
-                // movements, but cap it to prevent skyrocketing
-                float mouse_speed_factor =
-                    speed_mouse * 0.05f; // Reduced sensitivity
-                float mouse_speed_multiplier =
-                    1.0f + std::min(mouse_speed_factor, 2.0f); // Cap at 3x max
-                float required_velocity =
-                    base_velocity * mouse_speed_multiplier;
-
-                // Apply the velocity in the normal direction (away from mouse)
-                rect->velocity.x += nx * required_velocity;
-                rect->velocity.y += ny * required_velocity;
 
                 // Only apply push force to rectangles that are "in front" of
                 // mouse movement
@@ -334,7 +309,13 @@ int main()
                             float force_magnitude = speed_mouse * dt_mouse *
                                                     penetration * MOUSE_MASS *
                                                     dot_product;
-
+                            // If movement is more than 30% off from mouse
+                            // direction, increase force
+                            if (dot_product < 0.3f)
+                            {
+                                // Increase sideways/off-direction force
+                                force_magnitude *= 2.5f;
+                            }
                             rect->velocity.x += mvx * force_magnitude;
                             rect->velocity.y += mvy * force_magnitude;
                         }
@@ -355,6 +336,12 @@ int main()
                 rect->stop_time = current_time;
                 rect->move = false;
                 to_remove.push_back(i);
+            }
+
+            if (bbox.center.x + bbox.radius < 0 ||
+                bbox.center.x - bbox.radius > world_width)
+            {
+                activeRects.erase(activeRects.begin() + i);
             }
         }
 

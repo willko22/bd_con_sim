@@ -57,8 +57,11 @@ extern const float BG_COLOR_R; // Background color components
 extern const float BG_COLOR_G;
 extern const float BG_COLOR_B;
 
-extern const float RECT_WIDTH;  // Rectangle width in world units
-extern const float RECT_HEIGHT; // Rectangle height in world units
+extern const float RECT_WIDTH;     // Rectangle width in world units
+extern const float RECT_HEIGHT;    // Rectangle height in world units
+extern const float RECT_SIM_WIDTH; // Rectangle width in simulation calculations
+extern const float
+    RECT_SIM_HEIGHT; // Rectangle height in simulation calculations
 
 extern const float
     METERS_TO_WORLD; // Conversion factor from meters to world units
@@ -83,6 +86,14 @@ extern float screen_height; // Current screen height in pixels
 
 extern bool apply_gravity; // Toggle gravity application
 
+// ========== Viewport System (for aspect ratio preservation) ==========
+
+// Viewport dimensions and position within the window
+extern int viewport_x;      // Viewport X offset within window
+extern int viewport_y;      // Viewport Y offset within window
+extern int viewport_width;  // Viewport width in pixels
+extern int viewport_height; // Viewport height in pixels
+
 // ========== World Coordinate System ==========
 
 // World dimensions and transformation
@@ -102,7 +113,10 @@ extern std::vector<obj::Rectangle *> settledRects;
 extern int rectangle_count;
 extern std::unique_ptr<obj::Rectangle> world_background;
 
+extern size_t layer_background;
 extern size_t layer_rectangles;
+
+extern std::unique_ptr<obj::Rectangle> background;
 
 // ========== Entity Properties ==========
 // ########## INPUT HANDLING ##########
@@ -151,6 +165,7 @@ size_t angle_to_index(float angle);
 // ========== Coordinate Transformations ==========
 
 // World coordinate system functions
+void init_world_background();
 void update_world_transform(float screen_w, float screen_h);
 
 // ========== Inline Coordinate Conversion Functions ==========
@@ -170,13 +185,19 @@ inline float world_to_screen_y(float world_y)
 // Convert screen coordinates to world coordinates
 inline float screen_to_world_x(float screen_x)
 {
-    return (screen_x - world_offset_x) / world_scale;
+    // Convert window coordinates to viewport coordinates first
+    float viewport_x_coord = screen_x - viewport_x;
+    // Then convert viewport coordinates to world coordinates
+    return (viewport_x_coord - world_offset_x) / world_scale;
 }
 
 inline float screen_to_world_y(float screen_y)
 {
-    // Vertex shader handles Y-flip, so no flip needed here
-    return (screen_y - world_offset_y) / world_scale;
+    // Convert window coordinates to viewport coordinates first
+    float viewport_y_coord = screen_y - viewport_y;
+    // Then convert viewport coordinates to world coordinates (no Y-flip needed
+    // due to shader handling)
+    return (viewport_y_coord - world_offset_y) / world_scale;
 }
 
 // Convert scale between coordinate systems

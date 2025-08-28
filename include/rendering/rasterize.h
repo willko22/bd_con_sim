@@ -1,8 +1,7 @@
 #pragma once
 
-#include <GLFW/glfw3.h>
 #include "entities/objects.h"
-
+#include <GLFW/glfw3.h>
 
 // Initialize the rasterizer (sets up shaders, buffers, etc.)
 bool rasterize_init();
@@ -24,16 +23,17 @@ void end_batch_render();
 void draw_test_triangle();
 
 // Draw a polygon using the Polygon class
-void draw_polygon(const obj::Polygon& polygon);
+void draw_polygon(const obj::Polygon &polygon);
 
 // Draw a rectangle using the Rectangle class
-void draw_rectangle(const obj::Rectangle& rectangle);
+void draw_rectangle(const obj::Rectangle &rectangle);
 
 // Batch rendering functions for performance
-void batch_draw_rectangles(const std::vector<obj::Rectangle*>& rectangles);
+void batch_draw_rectangles(const std::vector<obj::Rectangle *> &rectangles);
 
 // Instanced rendering for maximum performance
-void instanced_draw_rectangles(const std::vector<obj::Rectangle*>& rectangles);
+void instanced_draw_rectangles(const std::vector<obj::Rectangle *> &rectangles,
+                               bool isBackground);
 
 // Debug function to draw red dots at rectangle centers
-void draw_center_dots(const std::vector<obj::Rectangle*>& rectangles);
+void draw_center_dots(const std::vector<obj::Rectangle *> &rectangles);

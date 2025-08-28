@@ -17,7 +17,7 @@ const float AIR_DENSITY = 1.225f;
 const float DEFAULT_MASS = .0001f;
 const float EXPLOSION_STRENGTH = 400.0f; // m/s
 
-const float MOUSE_MASS = 20.0f;   // mass for mouse interaction
+const float MOUSE_MASS = 30.0f;   // mass for mouse interaction
 const float MOUSE_RADIUS = 10.0f; // Radius for mouse interaction
 const float MOUSE_DRAG = 0.1f;    // drag applied when mouse is moving
 
@@ -38,7 +38,7 @@ const float WORLD_TO_METERS =
 std::mt19937 random_engine(std::random_device{}());
 std::uniform_real_distribution<float> random_angle(0.0f, TWO_PI);
 std::uniform_real_distribution<float>
-    random_impuls_increase(-EXPLOSION_STRENGTH * 0.7f,
+    random_impuls_increase(-EXPLOSION_STRENGTH * 0.95f,
                            EXPLOSION_STRENGTH * 0.5f);
 // std::uniform_real_distribution<float> random_impuls_increase(
 //     0.f,0.f
@@ -51,9 +51,15 @@ float screen_height = 600.0f;
 
 bool apply_gravity = true;
 
+// Viewport system (for aspect ratio preservation)
+int viewport_x = 0;        // Viewport X offset within window
+int viewport_y = 0;        // Viewport Y offset within window
+int viewport_width = 800;  // Viewport width in pixels
+int viewport_height = 600; // Viewport height in pixels
+
 // World coordinate system
-float world_width = 1000.0f; // World width in world units
-float world_height = 300.0f; // World height in world units
+float world_width = 720.0f;  // World width in world units
+float world_height = 480.0f; // World height in world units
 float world_scale = 1.0f;    // Scale factor from world to screen
 float world_offset_x = 0.0f; // X offset for centering
 float world_offset_y = 0.0f; // Y offset for positioning
@@ -61,15 +67,23 @@ float world_offset_y = 0.0f; // Y offset for positioning
 const float RECT_WIDTH = 3.0f;  // Rectangle width in world units
 const float RECT_HEIGHT = 3.0f; // Rectangle height in world units
 
+// Rectangle width in simulation calculations
+const float RECT_SIM_WIDTH = 3.0f;
+// Rectangle height in simulation calculations
+const float RECT_SIM_HEIGHT = 3.0f;
+
 // Rectangle storage and rendering layers (0: background, 1: rectangles)
-std::vector<std::vector<obj::Rectangle *>> render_order(1);
+std::vector<std::vector<obj::Rectangle *>> render_order(2);
 std::vector<std::unique_ptr<obj::Rectangle>> rectangles;
 std::vector<obj::Rectangle *> activeRects;
 std::vector<obj::Rectangle *> settledRects;
 int rectangle_count = 0;
 std::unique_ptr<obj::Rectangle> world_background = nullptr;
 
-size_t layer_rectangles = 0;
+size_t layer_background = 0;
+size_t layer_rectangles = 1;
+
+std::unique_ptr<obj::Rectangle> background = nullptr;
 
 // Input state
 bool left_mouse_held = false;
@@ -137,11 +151,11 @@ void spawn_rectangles(float screen_x, float screen_y)
     float world_y = screen_to_world_y(screen_y);
 
     // Validate spawn position is within world bounds
-    if (world_x < 0.0f || world_x > world_width || world_y < 0.0f ||
-        world_y > world_height)
-    {
-        return;
-    }
+    // if (world_x < 0.0f || world_x > world_width || world_y < 0.0f ||
+    //     world_y > world_height)
+    // {
+    //     return;
+    // }
 
     // Spawn configuration constants
     constexpr int SPAWN_COUNT = 200; // Number of rectangles to spawn4
@@ -251,60 +265,44 @@ void handle_mouse_hold_continuous()
 
 // ########## WORLD COORDINATE SYSTEM ##########
 
+void init_world_background()
+{
+    Color<u8> black_color(BG_COLOR_R, BG_COLOR_G, BG_COLOR_B,
+                          255); // background color
+
+    // Create rectangle at world origin covering entire world
+    background = std::make_unique<obj::Rectangle>(0.0f, 0.0f, world_width,
+                                                  world_height, black_color);
+
+    // Configure background properties
+    background->should_rotate = false;
+    background->move = false;
+    background->should_render = true;
+
+    // Add to background layer (use the pointer)
+    render_order[layer_background].push_back(background.get());
+}
+
 void update_world_transform(float screen_w, float screen_h)
 {
     // Update screen dimensions
     screen_width = screen_w;
     screen_height = screen_h;
 
-    // Scale world to fit screen height perfectly
-    // Width may be cropped or stretched based on aspect ratio
-    world_scale = screen_h / world_height;
+    // Since the viewport is calculated to exactly match the world's aspect
+    // ratio, we can use uniform scaling and the world should fill the entire
+    // viewport
+    float scale_x = screen_w / world_width;
+    float scale_y = screen_h / world_height;
 
-    // Center world horizontally, anchor to bottom vertically
+    // These should be equal due to aspect ratio preservation in viewport
+    // calculation Use the minimum to ensure no overflow (though they should be
+    // equal)
+    world_scale = std::min(scale_x, scale_y);
+
+    // World should be centered in viewport
     float scaled_world_width = world_width * world_scale;
+    float scaled_world_height = world_height * world_scale;
     world_offset_x = (screen_w - scaled_world_width) * 0.5f;
-    world_offset_y = 0.0f; // Bottom anchor
-}
-
-// Out-of-bounds cleanup function
-
-void remove_out_of_bounds_rectangles()
-{
-    float current_time = static_cast<float>(glfwGetTime());
-
-    for (auto &rect : rectangles)
-    {
-        if (!rect->should_render)
-            continue; // Skip already marked rectangles
-
-        // Calculate current position: position = initial + (velocity * time)
-        float time_since_spawn = current_time - rect->spawn_time;
-        float current_center_x =
-            rect->bbox.center.x +
-            (rect->velocity.x * rect->speed * time_since_spawn);
-        float current_center_y =
-            rect->bbox.center.y +
-            (rect->velocity.y * rect->speed * time_since_spawn);
-
-        // Convert to screen coordinates for bounds checking
-        float screen_x = world_to_screen_x(current_center_x);
-        float screen_y = world_to_screen_y(current_center_y);
-
-        // Treat rectangle as circle with radius = max(width, height) / 2
-        float screen_radius = rect->bbox.radius * world_scale;
-
-        // Check if completely outside screen bounds
-        bool outside_screen =
-            (screen_x + screen_radius < 0.0f) ||         // Left of screen
-            (screen_x - screen_radius > screen_width) || // Right of screen
-            (screen_y + screen_radius < 0.0f) ||         // Above screen
-            (screen_y - screen_radius > screen_height);  // Below screen
-
-        if (outside_screen)
-        {
-            rect->should_render = false;
-            rectangle_count--;
-        }
-    }
+    world_offset_y = (screen_h - scaled_world_height) * 0.5f;
 }
