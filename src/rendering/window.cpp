@@ -162,7 +162,7 @@ void render_frame(float &fps)
         ImGui::Text("FPS: %.1f", fps);
         ImGui::Text("Frame Time: %.3f ms", 1000.0f / fps);
         ImGui::Text("VSync: %s", enable_vsync ? "ON" : "OFF");
-        ImGui::Text("Rectangle Count: %d", activeRects.size());
+        ImGui::Text("Rectangle Count: %lld", activeRects.size());
 
         // // Mouse hold state information
         // ImGui::Separator();

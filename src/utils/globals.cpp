@@ -17,7 +17,7 @@ const float AIR_DENSITY = 1.225f;
 const float DEFAULT_MASS = .0001f;
 const float EXPLOSION_STRENGTH = 400.0f; // m/s
 
-const float MOUSE_MASS = 30.0f;   // mass for mouse interaction
+const float MOUSE_MASS = 80.0f;   // mass for mouse interaction
 const float MOUSE_RADIUS = 10.0f; // Radius for mouse interaction
 const float MOUSE_DRAG = 0.1f;    // drag applied when mouse is moving
 

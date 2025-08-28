@@ -154,6 +154,7 @@ int main()
     int frame_count = 0;
     float fps = 0.0f;
     std::vector<size_t> to_remove;
+    std::vector<size_t> to_add;
     // float
     // age
     // =
@@ -207,21 +208,11 @@ int main()
             1.0f; // Time in seconds to smoothly push rectangle out
         const float EPS = 1e-6f;
 
-        for (size_t i = 0; i < activeRects.size(); ++i)
+        for (size_t i = 0; i < settledRects.size(); ++i)
         {
-            rect = activeRects[i];
-            if (!rect->move)
-                continue; // Skip if rectangle is not moving
-
-            // rect->k = 0.5 * rho * Cd * A / mass
-            float damping = std::exp(-rect->k * dt);
-
-            rect->velocity *= damping;
-
-            // Gravity in m/s²
-            if (apply_gravity)
-                rect->velocity.y +=
-                    GRAVITY_ACCELERATION * (RECT_WIDTH + 1) * dt;
+            rect = settledRects[i];
+            if (rect->move)
+                continue; // Skip if rectangle is already moving
 
             closest_point_on_segment(mouse_world_x_prev, mouse_world_y_prev,
                                      mouse_world_x, mouse_world_y,
@@ -232,11 +223,6 @@ int main()
             float dy = rect->bbox.center.y - cy;
             float dist = std::sqrt(dx * dx + dy * dy);
             float radius = MOUSE_RADIUS + rect->bbox.radius;
-
-            // if (dist < radius && rect->spawn_time + 0.5f < current_time)
-            // {
-
-            // }
 
             // only correct if inside the swept circle
             if (dist < radius && rect->spawn_time + 1.f < current_time)
@@ -309,13 +295,137 @@ int main()
                             float force_magnitude = speed_mouse * dt_mouse *
                                                     penetration * MOUSE_MASS *
                                                     dot_product;
-                            // If movement is more than 30% off from mouse
-                            // direction, increase force
-                            if (dot_product < 0.3f)
-                            {
-                                // Increase sideways/off-direction force
-                                force_magnitude *= 2.5f;
-                            }
+
+                            rect->velocity.x += mvx * force_magnitude;
+                            rect->velocity.y += mvy * force_magnitude;
+                            float randFactor =
+                                0.01f + (rand() / (float)RAND_MAX) * 0.5f;
+
+                            float multi = speed_mouse * dt_mouse * MOUSE_MASS;
+
+                            rect->velocity.y -= multi * randFactor;
+                            rect->velocity.x += mvx * multi * 0.5f;
+                        }
+                    }
+                }
+
+                // move rectangle back to active list
+                rect->move = true;
+                rect->stop_time = 0.0f;
+                rect->spawn_time = current_time;
+                to_add.push_back(i);
+            }
+        }
+
+        // Remove settled rectangles from active list in reverse order
+        for (int j = static_cast<int>(to_add.size()) - 1; j >= 0; --j)
+        {
+            size_t idx = to_add[j];
+            auto *rect = settledRects[idx];
+
+            activeRects.push_back(rect);
+            settledRects.erase(settledRects.begin() + idx);
+        }
+        to_add.clear();
+
+        for (size_t i = 0; i < activeRects.size(); ++i)
+        {
+            rect = activeRects[i];
+            if (!rect->move)
+                continue; // Skip if rectangle is not moving
+
+            // rect->k = 0.5 * rho * Cd * A / mass
+            float damping = std::exp(-rect->k * dt);
+
+            rect->velocity *= damping;
+
+            // Gravity in m/s²
+            if (apply_gravity)
+                rect->velocity.y +=
+                    GRAVITY_ACCELERATION * (RECT_WIDTH + 1) * dt;
+
+            closest_point_on_segment(mouse_world_x_prev, mouse_world_y_prev,
+                                     mouse_world_x, mouse_world_y,
+                                     rect->bbox.center.x, rect->bbox.center.y,
+                                     cx, cy, seg_vx, seg_vy, seg_len2);
+
+            float dx = rect->bbox.center.x - cx;
+            float dy = rect->bbox.center.y - cy;
+            float dist = std::sqrt(dx * dx + dy * dy);
+            float radius = MOUSE_RADIUS + rect->bbox.radius;
+
+            // only correct if inside the swept circle
+            if (dist < radius && rect->spawn_time + 1.f < current_time)
+            {
+                float nx, ny;
+                if (dist > EPS)
+                {
+                    // normal from closest point to particle
+                    nx = dx / dist;
+                    ny = dy / dist;
+
+                    // Calculate required velocity to smoothly push rectangle
+                    // out of mouse radius, scaled by mouse speed for fast
+                    // movements
+                    float target_distance = radius + OUT_OFFSET;
+                    float current_distance = dist;
+                    float distance_to_travel =
+                        target_distance - current_distance;
+
+                    // Base velocity needed to reach target in OFFSET_TIME
+                    float base_velocity = distance_to_travel / OFFSET_TIME;
+
+                    // Scale the pushing force based on mouse speed to handle
+                    // fast movements, but cap it to prevent skyrocketing
+                    float mouse_speed_factor =
+                        speed_mouse * 0.05f; // Reduced sensitivity
+                    float mouse_speed_multiplier =
+                        1.0f + std::min(mouse_speed_factor,
+                                        RECT_SIM_WIDTH); // Cap at 3x max
+                    float required_velocity =
+                        base_velocity * mouse_speed_multiplier;
+
+                    // Apply the velocity in the normal direction (away from
+                    // mouse)
+                    rect->velocity.x += nx * required_velocity;
+                    rect->velocity.y += ny * required_velocity;
+                }
+
+                // Only apply push force to rectangles that are "in front" of
+                // mouse movement
+                if (speed_mouse > EPS) // Only if mouse is actually moving
+                {
+                    float penetration = (radius - dist) / radius; // 0..1
+
+                    // Normalize mouse velocity vector
+                    float mvx = vx_mouse / speed_mouse;
+                    float mvy = vy_mouse / speed_mouse;
+
+                    // Vector from mouse position to rectangle center
+                    float to_rect_x = rect->bbox.center.x - mouse_world_x;
+                    float to_rect_y = rect->bbox.center.y - mouse_world_y;
+                    float to_rect_len = std::sqrt(to_rect_x * to_rect_x +
+                                                  to_rect_y * to_rect_y);
+
+                    if (to_rect_len > EPS)
+                    {
+                        // Normalize vector to rectangle
+                        to_rect_x /= to_rect_len;
+                        to_rect_y /= to_rect_len;
+
+                        // Calculate dot product: positive means rectangle is
+                        // "in front" of mouse movement
+                        float dot_product = mvx * to_rect_x + mvy * to_rect_y;
+
+                        // Only apply force if rectangle is in front
+                        // (dot_product > 0) Use the dot product as a multiplier
+                        // to scale force based on alignment
+                        if (dot_product > 0.0f)
+                        {
+                            float force_magnitude = speed_mouse * dt_mouse *
+                                                    penetration * MOUSE_MASS *
+                                                    dot_product;
+
                             rect->velocity.x += mvx * force_magnitude;
                             rect->velocity.y += mvy * force_magnitude;
                         }
@@ -345,6 +455,7 @@ int main()
             }
         }
 
+        // Remove settled rectangles from active list in reverse order
         for (int j = static_cast<int>(to_remove.size()) - 1; j >= 0; --j)
         {
             size_t idx = to_remove[j];
