@@ -139,6 +139,10 @@ void render_frame(float &fps)
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
     // INSTANCED RENDERING OPTIMIZATION: Draw all rectangles with maximum
     // efficiency
     for (size_t i = 0; i < render_order.size(); ++i)
@@ -152,6 +156,64 @@ void render_frame(float &fps)
             // Draw red center dots for debugging rotation centers
             // draw_center_dots(layer);
         }
+
+        if (i == layer_text)
+        {
+            // Render title text with custom font
+            if (g_TitleFont != nullptr)
+            {
+                ImGui::PushFont(g_TitleFont);
+
+                // Calculate text size with the current font at original size
+                ImVec2 textSize = ImGui::CalcTextSize(TITLE_TEXT);
+
+                // Calculate dynamic scale factor to make title 60% of viewport
+                // width
+                float desired_width = viewport_width * 0.6f;
+                float scale_factor = desired_width / textSize.x;
+
+                // Update title dimensions in globals (scaled dimensions)
+                title_width = static_cast<int>(textSize.x * scale_factor);
+                title_height = static_cast<int>(textSize.y * scale_factor);
+
+                // Create invisible window for text rendering
+                ImGui::SetNextWindowPos(
+                    ImVec2(title_position_x, title_position_y),
+                    ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+                ImGui::SetNextWindowSize(ImVec2(0, 0)); // Auto-size
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+                ImGui::PushStyleColor(
+                    ImGuiCol_WindowBg,
+                    ImVec4(0, 0, 0, 0)); // Transparent background
+                ImGui::PushStyleColor(ImGuiCol_Border,
+                                      ImVec4(0, 0, 0, 0)); // No border
+
+                ImGui::Begin(
+                    "TitleText", nullptr,
+                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                        ImGuiWindowFlags_NoScrollbar |
+                        ImGuiWindowFlags_NoScrollWithMouse |
+                        ImGuiWindowFlags_NoInputs |
+                        ImGuiWindowFlags_AlwaysAutoResize);
+
+                // Apply scaling using ImGui's built-in scaling
+                ImGui::SetWindowFontScale(scale_factor);
+
+                // Convert color from u8 to float and render text
+                Color<float> titleColorGL = TITLE_FONT_COLOR.toGL();
+                ImGui::TextColored(ImVec4(titleColorGL.r, titleColorGL.g,
+                                          titleColorGL.b, titleColorGL.a),
+                                   TITLE_TEXT);
+
+                ImGui::End();
+
+                ImGui::PopStyleColor(2);
+                ImGui::PopStyleVar(2);
+                ImGui::PopFont();
+            }
+        }
     }
 
     // Conditional ImGui rendering for better performance (NEW OPTIMIZATION)
@@ -159,10 +221,8 @@ void render_frame(float &fps)
 
     if (show_ui)
     {
+
         // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
 
         // Simple FPS window
         ImGui::Begin("FPS");
@@ -170,19 +230,10 @@ void render_frame(float &fps)
         ImGui::Text("Frame Time: %.3f ms", 1000.0f / fps);
         ImGui::Text("VSync: %s", enable_vsync ? "ON" : "OFF");
         ImGui::Text("Rectangle Count: %lld", activeRects.size());
-
-        // // Mouse hold state information
-        // ImGui::Separator();
-        // ImGui::Text("Mouse State:");
-        // ImGui::Text("Position: (%.1f, %.1f)", mouse_current_x,
-        // mouse_current_y); ImGui::Text("Left: %s", left_mouse_held ? "HELD" :
-        // "Released"); ImGui::Text("Right: %s", right_mouse_held ? "HELD" :
-        // "Released"); ImGui::Text("Middle: %s", middle_mouse_held ? "HELD" :
-        // "Released");
-
-        // if (left_mouse_held || right_mouse_held || middle_mouse_held) {
-        //     ImGui::Text("Hold Duration: %.2f s", mouse_hold_duration);
-        // }
+        ImGui::Separator();
+        ImGui::Text("Title Position: (%d, %d)", title_position_x,
+                    title_position_y);
+        ImGui::Text("Title Size: %dx%d", title_width, title_height);
 
         ImGui::End();
 

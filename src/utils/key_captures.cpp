@@ -178,4 +178,6 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height)
     // Update world coordinate transform for resolution independence
     update_world_transform(static_cast<float>(viewport_width),
                            static_cast<float>(viewport_height));
+
+    update_title_layout();
 }

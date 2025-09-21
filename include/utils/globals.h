@@ -38,11 +38,30 @@ using Mat2 = std::array<float, 4>;
 using Mat3 = std::array<float, 9>;
 
 // ########## FORWARD DECLARATIONS ##########
+template <typename T> struct Color;
 
 namespace obj
 {
     struct Rectangle;
+
 }
+
+// ########## FONT SETIINGS ##########
+extern const char *TITLE_FONT_PATH;
+extern const float TITLE_FONT_SIZE; // Default font size in pixels
+// font color
+extern const Color<u8> TITLE_FONT_COLOR;
+extern const char *TITLE_TEXT;
+
+extern int title_position_x;
+extern int title_position_y;
+extern int title_width;
+extern int title_height;
+
+// Font pointers for ImGui
+struct ImFont;
+extern ImFont *g_DefaultFont;
+extern ImFont *g_TitleFont;
 
 // ########## Physics ##########
 // Physics simulation constants
@@ -177,6 +196,11 @@ size_t angle_to_index(float angle);
 // World coordinate system functions
 void init_world_background();
 void update_world_transform(float screen_w, float screen_h);
+
+// ========== Text Rendering ==========
+
+// Calculate title position and size based on current screen dimensions
+void update_title_layout();
 
 // ========== Inline Coordinate Conversion Functions ==========
 

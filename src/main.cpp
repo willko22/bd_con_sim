@@ -71,6 +71,19 @@ int main()
     // style
     ImGui::StyleColorsDark();
 
+    // Load fonts before initializing backends
+    g_DefaultFont = io.Fonts->AddFontDefault();
+    g_TitleFont =
+        io.Fonts->AddFontFromFileTTF(TITLE_FONT_PATH, TITLE_FONT_SIZE);
+
+    // Check if custom font loaded successfully, fallback to default if not
+    if (!g_TitleFont)
+    {
+        std::cerr << "Warning: Failed to load custom font from "
+                  << TITLE_FONT_PATH << ", using default font" << std::endl;
+        g_TitleFont = g_DefaultFont;
+    }
+
     // Setup
     // Platform/Renderer
     // backends
@@ -79,6 +92,9 @@ int main()
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     std::cout << "ImGui initialized successfully" << std::endl;
+
+    // Initialize title layout after fonts are loaded
+    update_title_layout();
 
     // Initialize world background after OpenGL context is ready
     init_world_background();

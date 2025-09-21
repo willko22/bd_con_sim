@@ -2,6 +2,9 @@
 #include "entities/objects.h"
 #include "utils/functions.h"
 
+// Forward declaration for ImFont
+struct ImFont;
+
 // ########## GLOBAL VARIABLE DEFINITIONS ##########
 
 // Physics constants
@@ -98,6 +101,29 @@ double mouse_hold_duration = 0.0;
 // Performance tables
 std::vector<std::pair<float, float>> trig_table; // (sin, cos) pairs for angles
 size_t trig_table_size = 0;
+
+// ########## FONT SETIINGS ##########
+const char *TITLE_FONT_PATH = "assets/fonts/Rubik-BoldItalic.ttf";
+const float TITLE_FONT_SIZE = 150.0f; // Default font size in pixels
+const char *TITLE_TEXT = "Happy Birthday";
+const Color<u8> TITLE_FONT_COLOR = Color<u8>(10, 0, 0, 50);
+int title_position_x = 0;
+int title_position_y = 0;
+int title_width = 0;
+int title_height = 0;
+
+// // Calculate text size with the current font
+// ImVec2 textSize = ImGui::CalcTextSize(titleText);
+
+// // Calculate centered position: anchor at center-x, bottom-y of text
+// float centerX = screen_width * 0.5f;
+// float centerY = screen_height * 0.5f;
+// float posX = centerX - (textSize.x * 0.5f); // Center horizontally
+// float posY = centerY - textSize.y;          // Bottom of text at center
+// Font pointers for ImGui
+
+ImFont *g_DefaultFont = nullptr;
+ImFont *g_TitleFont = nullptr;
 
 // ########## TRIGONOMETRY OPTIMIZATION ##########
 
@@ -301,4 +327,18 @@ void update_world_transform(float screen_w, float screen_h)
     float scaled_world_height = world_height * world_scale;
     world_offset_x = (screen_w - scaled_world_width) * 0.5f;
     world_offset_y = (screen_h - scaled_world_height) * 0.5f;
+
+    // Update title layout when screen dimensions change
+}
+
+// ########## TEXT RENDERING ##########
+
+void update_title_layout()
+{
+    // Calculate title position based on viewport center (not full window)
+    // This ensures the title is centered within the game viewport, accounting
+    // for letterboxing/pillarboxing
+
+    title_position_x = viewport_x + static_cast<int>(viewport_width * 0.5f);
+    title_position_y = viewport_y + static_cast<int>(viewport_height * 0.2f);
 }
