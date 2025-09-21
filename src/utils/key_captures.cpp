@@ -1,11 +1,10 @@
 
+#include "utils/globals.h"
 #include <iostream>
 
 #include "entities/objects.h"    // Include full definition for Rectangle
 #include "rendering/rasterize.h" // For update_viewport_cache
-#include "utils/globals.h"
 #include "utils/key_captures.h"
-#include <algorithm>
 
 // Key callback for GLFW
 void key_callback(GLFWwindow *window, int key, int scancode, int action,

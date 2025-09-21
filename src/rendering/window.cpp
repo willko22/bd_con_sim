@@ -1,16 +1,16 @@
 
-#include <GLFW/glfw3.h>
 #include <iostream>
 #include <string>
+
+#include "utils/key_captures.h"
+
+#include "rendering/rasterize.h"
+#include "utils/globals.h"
 
 // ImGui includes
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-
-#include "rendering/rasterize.h"
-#include "utils/globals.h"
-#include "utils/key_captures.h"
 
 #include "rendering/window.h"
 
@@ -55,6 +55,15 @@ std::pair<bool, GLFWwindow *> window_init()
 
     // Make the window's context current
     glfwMakeContextCurrent(window);
+
+    // Initialize GLAD before any OpenGL calls
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+    {
+        std::cerr << "Failed to initialize GLAD" << std::endl;
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return {false, nullptr};
+    }
 
     // Set V-sync based on global setting
     glfwSwapInterval(enable_vsync);
@@ -138,8 +147,6 @@ void render_frame(float &fps)
         if (!layer.empty())
         {
 
-            // Draw background layer with static rendering (no instancing
-            // needed)
             instanced_draw_rectangles(layer, i == layer_background);
 
             // Draw red center dots for debugging rotation centers

@@ -1,103 +1,112 @@
+
 #include "rendering/rasterize.h"
-#include <GLFW/glfw3.h>
 #include <cmath>
 #include <iostream>
 #include <string>
 
 #include "rendering/fragment_shader.h"
 #include "rendering/vertex_shader.h"
-#include "utils/globals.h" // For trig_table access
 
-// OpenGL function pointers for Windows
 #ifdef _WIN32
-#include <GL/gl.h>
-#include <GL/glext.h>
 #include <windows.h>
-
-// Function pointers for modern OpenGL
-PFNGLCREATESHADERPROC glCreateShader = nullptr;
-PFNGLSHADERSOURCEPROC glShaderSource = nullptr;
-PFNGLCOMPILESHADERPROC glCompileShader = nullptr;
-PFNGLGETSHADERIVPROC glGetShaderiv = nullptr;
-PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = nullptr;
-PFNGLDELETESHADERPROC glDeleteShader = nullptr;
-PFNGLCREATEPROGRAMPROC glCreateProgram = nullptr;
-PFNGLATTACHSHADERPROC glAttachShader = nullptr;
-PFNGLLINKPROGRAMPROC glLinkProgram = nullptr;
-PFNGLGETPROGRAMIVPROC glGetProgramiv = nullptr;
-PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog = nullptr;
-PFNGLUSEPROGRAMPROC glUseProgram = nullptr;
-PFNGLDELETEPROGRAMPROC glDeleteProgram = nullptr;
-PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = nullptr;
-PFNGLBINDVERTEXARRAYPROC glBindVertexArray = nullptr;
-PFNGLGENBUFFERSPROC glGenBuffers = nullptr;
-PFNGLBINDBUFFERPROC glBindBuffer = nullptr;
-PFNGLBUFFERDATAPROC glBufferData = nullptr;
-PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = nullptr;
-PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = nullptr;
-PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = nullptr;
-PFNGLDELETEBUFFERSPROC glDeleteBuffers = nullptr;
-PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor = nullptr;
-PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced = nullptr;
-PFNGLBUFFERSUBDATAPROC glBufferSubData = nullptr;
-PFNGLACTIVETEXTUREPROC glActiveTexture = nullptr;
-PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = nullptr;
-PFNGLUNIFORM1IPROC glUniform1i = nullptr;
-PFNGLUNIFORM1FPROC glUniform1f = nullptr;
-PFNGLUNIFORM2FPROC glUniform2f = nullptr; // NEW
-
-// Function to load OpenGL function pointers
-void loadOpenGLFunctions()
-{
-    glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
-    glShaderSource = (PFNGLSHADERSOURCEPROC)wglGetProcAddress("glShaderSource");
-    glCompileShader =
-        (PFNGLCOMPILESHADERPROC)wglGetProcAddress("glCompileShader");
-    glGetShaderiv = (PFNGLGETSHADERIVPROC)wglGetProcAddress("glGetShaderiv");
-    glGetShaderInfoLog =
-        (PFNGLGETSHADERINFOLOGPROC)wglGetProcAddress("glGetShaderInfoLog");
-    glDeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress("glDeleteShader");
-    glCreateProgram =
-        (PFNGLCREATEPROGRAMPROC)wglGetProcAddress("glCreateProgram");
-    glAttachShader = (PFNGLATTACHSHADERPROC)wglGetProcAddress("glAttachShader");
-    glLinkProgram = (PFNGLLINKPROGRAMPROC)wglGetProcAddress("glLinkProgram");
-    glGetProgramiv = (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv");
-    glGetProgramInfoLog =
-        (PFNGLGETPROGRAMINFOLOGPROC)wglGetProcAddress("glGetProgramInfoLog");
-    glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress("glUseProgram");
-    glDeleteProgram =
-        (PFNGLDELETEPROGRAMPROC)wglGetProcAddress("glDeleteProgram");
-    glGenVertexArrays =
-        (PFNGLGENVERTEXARRAYSPROC)wglGetProcAddress("glGenVertexArrays");
-    glBindVertexArray =
-        (PFNGLBINDVERTEXARRAYPROC)wglGetProcAddress("glBindVertexArray");
-    glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress("glGenBuffers");
-    glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress("glBindBuffer");
-    glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress("glBufferData");
-    glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress(
-        "glVertexAttribPointer");
-    glEnableVertexAttribArray =
-        (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress(
-            "glEnableVertexAttribArray");
-    glDeleteVertexArrays =
-        (PFNGLDELETEVERTEXARRAYSPROC)wglGetProcAddress("glDeleteVertexArrays");
-    glDeleteBuffers =
-        (PFNGLDELETEBUFFERSPROC)wglGetProcAddress("glDeleteBuffers");
-    glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)wglGetProcAddress(
-        "glVertexAttribDivisor");
-    glDrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)wglGetProcAddress(
-        "glDrawArraysInstanced");
-    glBufferSubData =
-        (PFNGLBUFFERSUBDATAPROC)wglGetProcAddress("glBufferSubData");
-    glActiveTexture =
-        (PFNGLACTIVETEXTUREPROC)wglGetProcAddress("glActiveTexture");
-    glGetUniformLocation =
-        (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress("glGetUniformLocation");
-    glUniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress("glUniform1i");
-    glUniform1f = (PFNGLUNIFORM1FPROC)wglGetProcAddress("glUniform1f");
-    glUniform2f = (PFNGLUNIFORM2FPROC)wglGetProcAddress("glUniform2f"); // NEW
-}
 #endif
+
+// // OpenGL function pointers for Windows
+// #ifdef _WIN32
+// #include <GL/gl.h>
+// #include <GL/glext.h>
+// #include <windows.h>
+
+// // Function pointers for modern OpenGL
+// PFNGLCREATESHADERPROC glCreateShader = nullptr;
+// PFNGLSHADERSOURCEPROC glShaderSource = nullptr;
+// PFNGLCOMPILESHADERPROC glCompileShader = nullptr;
+// PFNGLGETSHADERIVPROC glGetShaderiv = nullptr;
+// PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = nullptr;
+// PFNGLDELETESHADERPROC glDeleteShader = nullptr;
+// PFNGLCREATEPROGRAMPROC glCreateProgram = nullptr;
+// PFNGLATTACHSHADERPROC glAttachShader = nullptr;
+// PFNGLLINKPROGRAMPROC glLinkProgram = nullptr;
+// PFNGLGETPROGRAMIVPROC glGetProgramiv = nullptr;
+// PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog = nullptr;
+// PFNGLUSEPROGRAMPROC glUseProgram = nullptr;
+// PFNGLDELETEPROGRAMPROC glDeleteProgram = nullptr;
+// PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = nullptr;
+// PFNGLBINDVERTEXARRAYPROC glBindVertexArray = nullptr;
+// PFNGLGENBUFFERSPROC glGenBuffers = nullptr;
+// PFNGLBINDBUFFERPROC glBindBuffer = nullptr;
+// PFNGLBUFFERDATAPROC glBufferData = nullptr;
+// PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = nullptr;
+// PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = nullptr;
+// PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = nullptr;
+// PFNGLDELETEBUFFERSPROC glDeleteBuffers = nullptr;
+// PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor = nullptr;
+// PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced = nullptr;
+// PFNGLBUFFERSUBDATAPROC glBufferSubData = nullptr;
+// PFNGLACTIVETEXTUREPROC glActiveTexture = nullptr;
+// PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = nullptr;
+// PFNGLUNIFORM1IPROC glUniform1i = nullptr;
+// PFNGLUNIFORM1FPROC glUniform1f = nullptr;
+// PFNGLUNIFORM2FPROC glUniform2f = nullptr; // NEW
+
+// // Function to load OpenGL function pointers
+// void loadOpenGLFunctions()
+// {
+//     glCreateShader =
+//     (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
+//     glShaderSource =
+//     (PFNGLSHADERSOURCEPROC)wglGetProcAddress("glShaderSource");
+//     glCompileShader =
+//         (PFNGLCOMPILESHADERPROC)wglGetProcAddress("glCompileShader");
+//     glGetShaderiv = (PFNGLGETSHADERIVPROC)wglGetProcAddress("glGetShaderiv");
+//     glGetShaderInfoLog =
+//         (PFNGLGETSHADERINFOLOGPROC)wglGetProcAddress("glGetShaderInfoLog");
+//     glDeleteShader =
+//     (PFNGLDELETESHADERPROC)wglGetProcAddress("glDeleteShader");
+//     glCreateProgram =
+//         (PFNGLCREATEPROGRAMPROC)wglGetProcAddress("glCreateProgram");
+//     glAttachShader =
+//     (PFNGLATTACHSHADERPROC)wglGetProcAddress("glAttachShader"); glLinkProgram
+//     = (PFNGLLINKPROGRAMPROC)wglGetProcAddress("glLinkProgram");
+//     glGetProgramiv =
+//     (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv");
+//     glGetProgramInfoLog =
+//         (PFNGLGETPROGRAMINFOLOGPROC)wglGetProcAddress("glGetProgramInfoLog");
+//     glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress("glUseProgram");
+//     glDeleteProgram =
+//         (PFNGLDELETEPROGRAMPROC)wglGetProcAddress("glDeleteProgram");
+//     glGenVertexArrays =
+//         (PFNGLGENVERTEXARRAYSPROC)wglGetProcAddress("glGenVertexArrays");
+//     glBindVertexArray =
+//         (PFNGLBINDVERTEXARRAYPROC)wglGetProcAddress("glBindVertexArray");
+//     glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress("glGenBuffers");
+//     glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress("glBindBuffer");
+//     glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress("glBufferData");
+//     glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress(
+//         "glVertexAttribPointer");
+//     glEnableVertexAttribArray =
+//         (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress(
+//             "glEnableVertexAttribArray");
+//     glDeleteVertexArrays =
+//         (PFNGLDELETEVERTEXARRAYSPROC)wglGetProcAddress("glDeleteVertexArrays");
+//     glDeleteBuffers =
+//         (PFNGLDELETEBUFFERSPROC)wglGetProcAddress("glDeleteBuffers");
+//     glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)wglGetProcAddress(
+//         "glVertexAttribDivisor");
+//     glDrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)wglGetProcAddress(
+//         "glDrawArraysInstanced");
+//     glBufferSubData =
+//         (PFNGLBUFFERSUBDATAPROC)wglGetProcAddress("glBufferSubData");
+//     glActiveTexture =
+//         (PFNGLACTIVETEXTUREPROC)wglGetProcAddress("glActiveTexture");
+//     glGetUniformLocation =
+//         (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress("glGetUniformLocation");
+//     glUniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress("glUniform1i");
+//     glUniform1f = (PFNGLUNIFORM1FPROC)wglGetProcAddress("glUniform1f");
+//     glUniform2f = (PFNGLUNIFORM2FPROC)wglGetProcAddress("glUniform2f"); //
+//     NEW
+// }
+// #endif
 
 // Global OpenGL obj
 static unsigned int shaderProgram = 0;      // Instanced rendering shader
@@ -205,17 +214,17 @@ static bool uploadTrigTableToGPU()
 
 bool rasterize_init()
 {
-#ifdef _WIN32
-    // Load OpenGL function pointers
-    loadOpenGLFunctions();
+    // #ifdef _WIN32
+    //     // Load OpenGL function pointers
+    //     loadOpenGLFunctions();
 
-    // Check if functions were loaded successfully
-    if (!glCreateShader || !glShaderSource || !glCompileShader)
-    {
-        std::cerr << "Failed to load OpenGL function pointers!" << std::endl;
-        return false;
-    }
-#endif
+    //     // Check if functions were loaded successfully
+    //     if (!glCreateShader || !glShaderSource || !glCompileShader)
+    //     {
+    //         std::cerr << "Failed to load OpenGL function pointers!" <<
+    //         std::endl; return false;
+    //     }
+    // #endif
 
     // Compile shaders for instanced rendering
     unsigned int instancedVertexShader =

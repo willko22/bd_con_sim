@@ -1,8 +1,17 @@
 #pragma once
+
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <glad/glad.h>
+#include <glfw/glfw3.h>
+#include <iostream>
+#include <map>
 #include <memory>
 #include <random>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -115,6 +124,7 @@ extern std::unique_ptr<obj::Rectangle> world_background;
 
 extern size_t layer_background;
 extern size_t layer_rectangles;
+extern size_t layer_text;
 
 extern std::unique_ptr<obj::Rectangle> background;
 

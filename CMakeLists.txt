@@ -3,11 +3,15 @@ cmake_minimum_required(VERSION 3.16)
 # Get the project name from the folder name
 get_filename_component(PROJECT_NAME_FROM_FOLDER ${CMAKE_SOURCE_DIR} NAME)
 # Project name and version
-project(${PROJECT_NAME_FROM_FOLDER} VERSION 1.0.0 LANGUAGES CXX)
+project(${PROJECT_NAME_FROM_FOLDER} VERSION 1.0.0 LANGUAGES C CXX)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Set C standard (for GLAD)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Generate compile_commands.json for better IDE support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -69,13 +73,28 @@ else()
     message(STATUS "ImGui found at: ${CMAKE_SOURCE_DIR}/libs/imgui")
 endif()
 
-# stb - Single-file public domain libraries (includes stb_truetype)
-if(NOT EXISTS "${CMAKE_SOURCE_DIR}/libs/stb")
-    message(STATUS "stb not found in libs/stb. Please add stb to libs/stb or install via package manager")
+# FreeType - High-quality font rendering library (replacement for stb_truetype)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/libs/freetype")
+    message(STATUS "FreeType not found in libs/freetype. Please add FreeType to libs/freetype or run setup_libs.bat")
 else()
-    include_directories(${CMAKE_SOURCE_DIR}/libs/stb)
-    message(STATUS "stb found at: ${CMAKE_SOURCE_DIR}/libs/stb")
+    # Build FreeType from source in libs/freetype
+    add_subdirectory(${CMAKE_SOURCE_DIR}/libs/freetype)
+    # Include directory containing ft2build.h and freetype headers
+    include_directories(${CMAKE_SOURCE_DIR}/libs/freetype/include)
+    message(STATUS "FreeType found at: ${CMAKE_SOURCE_DIR}/libs/freetype")
 endif()
+
+
+# GLAD - OpenGL function loader
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/libs/glad")
+    message(STATUS "GLAD not found in libs/glad. Please add GLAD to libs/glad")
+else()
+    # Build GLAD as a static library
+    add_library(glad STATIC ${CMAKE_SOURCE_DIR}/libs/glad/src/glad.c)
+    target_include_directories(glad PUBLIC ${CMAKE_SOURCE_DIR}/libs/glad/include)
+    message(STATUS "GLAD found at: ${CMAKE_SOURCE_DIR}/libs/glad")
+endif()
+
 
 # OpenGL - Graphics API
 find_package(OpenGL REQUIRED)
@@ -126,6 +145,7 @@ file(GLOB_RECURSE HEADERS
     "${CMAKE_SOURCE_DIR}/include/**/*.h"
 )
 
+
 # Create executable
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
@@ -160,11 +180,15 @@ endif()
 
 # GLFW compile definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    # No special definitions needed - GLFW will include OpenGL headers automatically
+    # Prevent GLFW from including OpenGL headers (we use GLAD)
+    GLFW_INCLUDE_NONE
 )
 
 # ImGui compile definitions
 # ImGui will use its built-in OpenGL loader by default unless we specify otherwise
+if(EXISTS "${CMAKE_SOURCE_DIR}/libs/imgui" AND EXISTS "${CMAKE_SOURCE_DIR}/libs/glad")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE IMGUI_IMPL_OPENGL_LOADER_GLAD)
+endif()
 
 # Link libraries
 if(EXISTS "${CMAKE_SOURCE_DIR}/libs/glfw")
@@ -173,6 +197,19 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/libs/glfw")
 else()
     target_link_libraries(${PROJECT_NAME} PRIVATE ${GRAPHICS_LIBS})
     message(STATUS "GLFW not found - linking only OpenGL libraries: ${GRAPHICS_LIBS}")
+endif()
+
+# Link GLAD if available
+if(EXISTS "${CMAKE_SOURCE_DIR}/libs/glad")
+    target_link_libraries(${PROJECT_NAME} PRIVATE glad)
+    message(STATUS "Linking GLAD library")
+endif()
+
+# Link FreeType if available
+if(EXISTS "${CMAKE_SOURCE_DIR}/libs/freetype")
+    # The FreeType CMake build defines a target named 'freetype'
+    target_link_libraries(${PROJECT_NAME} PRIVATE freetype)
+    message(STATUS "Linking FreeType library")
 endif()
 
 # Additional libraries can be added here as needed

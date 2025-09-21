@@ -1,30 +1,16 @@
-#include <GLFW/glfw3.h>
+
+#include "utils/globals.h"
+
 #include <iostream>
 #include <string>
 
-// ImGui
-// includes
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-// STB
-// TrueType
-// for
-// font
-// rendering
-// #include
-// "stb_truetype.h"
 #include "rendering/window.h"
-#include "utils/globals.h"
 
-// #include
-// "rendering/rasterize.h"
-
-// Error
-// callback
-// for
-// GLFW
+// Error callback for GLFW
 void error_callback(int error, const char *description)
 {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
@@ -67,6 +53,8 @@ int main()
         glfwTerminate();
         return -1;
     }
+
+    // GLAD is initialized in window_init() after creating the OpenGL context
 
     // Initialize
     // ImGui
@@ -143,8 +131,6 @@ int main()
     std::cout << "Controls:" << std::endl;
     std::cout << "  ESC   - Close the window" << std::endl;
     std::cout << "  V     - Toggle VsyncW" << std::endl;
-    std::cout << "Note: GPU switching requires application restart!"
-              << std::endl;
 
     // Simple
     // FPS
@@ -153,8 +139,10 @@ int main()
     double last_frame_time = last_time; // Track time for frame delta
     int frame_count = 0;
     float fps = 0.0f;
-    std::vector<size_t> to_remove;
-    std::vector<size_t> to_add;
+    std::vector<obj::Rectangle *> to_remove; // move to settled
+    std::vector<obj::Rectangle *> to_add;    // move to active
+    std::vector<obj::Rectangle *>
+        to_remove_active_only; // drop from active only
     // float
     // age
     // =
@@ -313,20 +301,27 @@ int main()
                 rect->move = true;
                 rect->stop_time = 0.0f;
                 rect->spawn_time = current_time;
-                to_add.push_back(i);
+                to_add.push_back(rect);
             }
         }
 
-        // Remove settled rectangles from active list in reverse order
-        for (int j = static_cast<int>(to_add.size()) - 1; j >= 0; --j)
+        // Move selected rectangles from settled -> active by pointer
+        if (!to_add.empty())
         {
-            size_t idx = to_add[j];
-            auto *rect = settledRects[idx];
-
-            activeRects.push_back(rect);
-            settledRects.erase(settledRects.begin() + idx);
+            for (auto *r : to_add)
+            {
+                activeRects.push_back(r);
+            }
+            // Erase by pointer to avoid index invalidation issues
+            for (auto *r : to_add)
+            {
+                auto it =
+                    std::remove(settledRects.begin(), settledRects.end(), r);
+                if (it != settledRects.end())
+                    settledRects.erase(it, settledRects.end());
+            }
+            to_add.clear();
         }
-        to_add.clear();
 
         for (size_t i = 0; i < activeRects.size(); ++i)
         {
@@ -445,30 +440,52 @@ int main()
                 rect->position.y = rect->bbox.center.y;
                 rect->stop_time = current_time;
                 rect->move = false;
-                to_remove.push_back(i);
+                to_remove.push_back(rect);
+                // Avoid further processing on this rect in this iteration
+                continue;
             }
 
             if (bbox.center.x + bbox.radius < 0 ||
                 bbox.center.x - bbox.radius > world_width)
             {
-                activeRects.erase(activeRects.begin() + i);
+                // Defer erase until after loop to keep indices stable
+                to_remove_active_only.push_back(rect);
+                continue;
             }
         }
 
-        // Remove settled rectangles from active list in reverse order
-        for (int j = static_cast<int>(to_remove.size()) - 1; j >= 0; --j)
+        // Move selected rectangles from active -> settled by pointer
+        if (!to_remove.empty())
         {
-            size_t idx = to_remove[j];
-            auto *rect = activeRects[idx];
-
-            settledRects.push_back(rect);
-            activeRects.erase(activeRects.begin() + idx);
+            for (auto *r : to_remove)
+            {
+                settledRects.push_back(r);
+            }
+            for (auto *r : to_remove)
+            {
+                auto it =
+                    std::remove(activeRects.begin(), activeRects.end(), r);
+                if (it != activeRects.end())
+                    activeRects.erase(it, activeRects.end());
+            }
+            to_remove.clear();
         }
-        to_remove.clear();
+
+        // Remove any active-only indices (objects that left horizontal bounds)
+        if (!to_remove_active_only.empty())
+        {
+            for (auto *r : to_remove_active_only)
+            {
+                auto it =
+                    std::remove(activeRects.begin(), activeRects.end(), r);
+                if (it != activeRects.end())
+                    activeRects.erase(it, activeRects.end());
+            }
+            to_remove_active_only.clear();
+        }
 
         // Render the frame
         render_frame(fps);
-
         // Swap front and back buffers
         glfwSwapBuffers(window);
     }

@@ -1,12 +1,6 @@
 #include "utils/globals.h"
 #include "entities/objects.h"
 #include "utils/functions.h"
-#include <GLFW/glfw3.h>
-#include <algorithm>
-#include <cmath>
-#include <iostream>
-#include <memory>
-#include <random>
 
 // ########## GLOBAL VARIABLE DEFINITIONS ##########
 
@@ -72,8 +66,9 @@ const float RECT_SIM_WIDTH = 3.0f;
 // Rectangle height in simulation calculations
 const float RECT_SIM_HEIGHT = 3.0f;
 
-// Rectangle storage and rendering layers (0: background, 1: rectangles)
-std::vector<std::vector<obj::Rectangle *>> render_order(2);
+// Rectangle storage and rendering layers
+// 0: background, 1: text, 2: rectangles
+std::vector<std::vector<obj::Rectangle *>> render_order(3);
 std::vector<std::unique_ptr<obj::Rectangle>> rectangles;
 std::vector<obj::Rectangle *> activeRects;
 std::vector<obj::Rectangle *> settledRects;
@@ -81,7 +76,8 @@ int rectangle_count = 0;
 std::unique_ptr<obj::Rectangle> world_background = nullptr;
 
 size_t layer_background = 0;
-size_t layer_rectangles = 1;
+size_t layer_text = 1;
+size_t layer_rectangles = 2;
 
 std::unique_ptr<obj::Rectangle> background = nullptr;
 

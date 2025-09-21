@@ -1,7 +1,7 @@
 #pragma once
+#include "utils/globals.h"
 
 #include "entities/objects.h"
-#include <GLFW/glfw3.h>
 
 // Initialize the rasterizer (sets up shaders, buffers, etc.)
 bool rasterize_init();
