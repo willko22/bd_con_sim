@@ -45,29 +45,33 @@ if %ERRORLEVEL% equ 0 (
 
 REM Setup GLAD (OpenGL loader)
 echo Setting up GLAD...
-if exist "libs\glad\src\glad.c" (
-    echo GLAD already present at libs\glad
-) else (
-    echo GLAD not found; attempting to generate via Python glad2...
-    where python >nul 2>nul
-    if %ERRORLEVEL% neq 0 (
-        echo Python not found. Skipping GLAD generation.
-        echo Please generate GLAD manually (C, OpenGL core 3.3+, include gl loader) and place it in libs\glad
-        echo Web generator: https://glad.dav1d.de/
-    ) else (
-        python -m pip install --user --quiet glad2
-        if %ERRORLEVEL% equ 0 (
-            python -m glad --api gl:core=3.3 --generator c --out-path libs/glad --extensions ''
-            if %ERRORLEVEL% equ 0 (
-                echo GLAD generated successfully into libs\glad
-            ) else (
-                echo Failed to generate GLAD with glad2. You can try the web generator and copy files to libs\glad
-            )
-        ) else (
-            echo Failed to install glad2 via pip. Please install it manually or use the web generator.
-        )
-    )
-)
+echo Creating GLAD directory structure...
+if exist "libs\glad" rmdir /s /q "libs\glad"
+mkdir "libs\glad"
+mkdir "libs\glad\include"
+mkdir "libs\glad\include\glad"
+mkdir "libs\glad\include\KHR"
+mkdir "libs\glad\src"
+
+echo.
+echo GLAD setup requires manual download due to web service complexity.
+echo.
+echo Please follow these steps:
+echo 1. Open your web browser
+echo 2. Go to: https://glad.dav1d.de/#language=c^&specification=gl^&api=gl%%3D4.6^&api=gles1%%3Dnone^&api=gles2%%3Dnone^&api=glsc2%%3Dnone^&profile=core^&loader=on
+echo 3. Click the 'Generate' button
+echo 4. Download the 'glad.zip' file
+echo 5. Extract the contents:
+echo    - Copy include/glad/glad.h to libs\glad\include\glad\
+echo    - Copy include/KHR/khrplatform.h to libs\glad\include\KHR\
+echo    - Copy src/glad.c to libs\glad\src\
+echo.
+echo Directory structure created at: libs\glad\
+echo After manual setup, you should have:
+echo   libs\glad\include\glad\glad.h
+echo   libs\glad\include\KHR\khrplatform.h
+echo   libs\glad\src\glad.c
+echo.
 
 REM Download FreeType (replacement for stb_truetype)
 echo Setting up FreeType (font rendering)...
